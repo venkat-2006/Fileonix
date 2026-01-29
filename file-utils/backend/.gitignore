@@ -1,0 +1,41 @@
+# =========================
+# Node.js
+# =========================
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.local
+.env.development
+.env.production
+
+# =========================
+# Uploads / runtime files
+# =========================
+uploads/
+backend/uploads/
+
+# =========================
+# Docker
+# =========================
+*.log
+docker-data/
+.docker/
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =========================
+# Build artifacts (future)
+# =========================
+dist/
+build/
