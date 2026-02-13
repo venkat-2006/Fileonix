@@ -89,6 +89,47 @@ const worker = new Worker(
             return { success: true, outputPath };
         }
 
+        // ---------------- PDF SPLIT ----------------
+        if (conversionType === "pdf->split") {
+            console.log("✂️ PDF Split started");
+
+            try {
+                const srcPdfBytes = fs.readFileSync(files[0].path);
+                const srcPdf = await PDFDocument.load(srcPdfBytes);
+
+                const totalPages = srcPdf.getPageCount();
+                console.log(`📄 Total pages: ${totalPages}`);
+
+                const outputDir = path.join("uploads", "tmp", jobId);
+
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                for (let i = 0; i < totalPages; i++) {
+                    const newPdf = await PDFDocument.create();
+
+                    const [copiedPage] = await newPdf.copyPages(srcPdf, [i]);
+                    newPdf.addPage(copiedPage);
+
+                    const pdfBytes = await newPdf.save();
+
+                    const outputPath = path.join(outputDir, `page-${i + 1}.pdf`);
+                    fs.writeFileSync(outputPath, pdfBytes);
+
+                    console.log(`✅ Created page-${i + 1}.pdf`);
+                }
+
+                console.log("✅ PDF Split done");
+                return { success: true };
+
+            } catch (err) {
+                console.error("❌ PDF Split FAILED:", err);
+                throw err;
+            }
+        }
+
+
 
         console.log("❌ Unsupported conversion");
         return { success: false };
