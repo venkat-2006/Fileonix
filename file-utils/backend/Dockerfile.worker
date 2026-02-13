@@ -7,4 +7,4 @@ RUN npm install
 
 COPY backend ./
 
-CMD ["node", "src/server.js"]
+CMD ["node", "src/workers/conversion.worker.js"]

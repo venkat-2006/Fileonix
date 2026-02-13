@@ -1,32 +1,29 @@
-import { validateFiles } from "../utils/fileValidation.js";
-import { createJob } from "../services/job.service.js";
+import { conversionQueue } from "../queues/conversion.queue.js";
+import { v4 as uuidv4 } from "uuid";
 
-export function uploadFiles(req, res) {
+export const uploadFiles = async (req, res) => {
   try {
     const { conversionType } = req.body;
-    const files = req.files;
 
-    if (!files || files.length === 0) {
-      return res.status(400).json({ error: "No files uploaded" });
-    }
+    const jobId = uuidv4(); // ✅ generate jobId properly
 
-    validateFiles(files, conversionType);
-
-    const job = {
-      jobId: req.jobId,
-      status: "uploaded",
-      conversionType,
-      inputFiles: files.map(f => f.path),
-      createdAt: new Date().toISOString()
-    };
-
-    createJob(job);
+    await conversionQueue.add(
+      "conversion",          // ✅ must match worker name
+      { conversionType },    // ✅ payload
+      {
+        jobId,
+        removeOnComplete: false,
+        removeOnFail: false,
+      }
+    );
 
     res.json({
-      jobId: job.jobId,
-      status: job.status
+      jobId,
+      status: "queued",
     });
+
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Upload failed" });
   }
-}
+};
