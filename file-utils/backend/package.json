@@ -12,6 +12,7 @@
     "express": "^4.19.2",
     "ioredis": "^5.9.3",
     "multer": "^2.0.2",
+    "pdf-lib": "^1.17.1",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
