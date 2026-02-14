@@ -3,7 +3,8 @@ import { redisConnection } from "../config/redis.js";
 import { PDFDocument } from "pdf-lib";
 import fs from "fs";
 import path from "path";
-import poppler from "pdf-poppler";
+import { Poppler } from "node-poppler";
+
 
 const worker = new Worker(
     "conversion-queue",
@@ -184,14 +185,13 @@ const worker = new Worker(
                     fs.mkdirSync(outputDir, { recursive: true });
                 }
 
-                const options = {
-                    format: "png",
-                    out_dir: outputDir,
-                    out_prefix: "page",
-                    page: null,
-                };
+                const poppler = new Poppler();
 
-                await poppler.convert(pdfFile.path, options);
+                await poppler.pdfToCairo(
+                    pdfFile.path,
+                    path.join(outputDir, "page"),
+                    { pngFile: true }
+                );
 
                 console.log("✅ PDF → Images done");
 
@@ -202,6 +202,7 @@ const worker = new Worker(
                 throw err;
             }
         }
+
 
 
         console.log("❌ Unsupported conversion");
