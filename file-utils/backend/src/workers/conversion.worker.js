@@ -3,6 +3,7 @@ import { redisConnection } from "../config/redis.js";
 import { PDFDocument } from "pdf-lib";
 import fs from "fs";
 import path from "path";
+import poppler from "pdf-poppler";
 
 const worker = new Worker(
     "conversion-queue",
@@ -129,6 +130,78 @@ const worker = new Worker(
             }
         }
 
+        // ---------------- TXT → PDF ----------------
+        if (conversionType === "txt->pdf") {
+            console.log("📝 TXT → PDF started");
+
+            try {
+                const txtFile = files[0];
+
+                const text = fs.readFileSync(txtFile.path, "utf-8");
+
+                const pdfDoc = await PDFDocument.create();
+                const page = pdfDoc.addPage();
+
+                page.drawText(text, {
+                    x: 50,
+                    y: page.getHeight() - 50,
+                    size: 12,
+                    maxWidth: page.getWidth() - 100,
+                    lineHeight: 14,
+                });
+
+                const pdfBytes = await pdfDoc.save();
+
+                const outputDir = path.join("uploads", "tmp", jobId);
+
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                const outputPath = path.join(outputDir, "text.pdf");
+                fs.writeFileSync(outputPath, pdfBytes);
+
+                console.log("✅ TXT → PDF done");
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ TXT → PDF FAILED:", err);
+                throw err;
+            }
+        }
+
+        // ---------------- PDF → IMAGES ----------------
+        if (conversionType === "pdf->images") {
+            console.log("🖼 PDF → Images started");
+
+            try {
+                const pdfFile = files[0];
+
+                const outputDir = path.join("uploads", "tmp", jobId, "images");
+
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                const options = {
+                    format: "png",
+                    out_dir: outputDir,
+                    out_prefix: "page",
+                    page: null,
+                };
+
+                await poppler.convert(pdfFile.path, options);
+
+                console.log("✅ PDF → Images done");
+
+                return { success: true };
+
+            } catch (err) {
+                console.error("❌ PDF → Images FAILED:", err);
+                throw err;
+            }
+        }
 
 
         console.log("❌ Unsupported conversion");
