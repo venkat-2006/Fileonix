@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import { Poppler } from "node-poppler";
 import { Document, Packer, Paragraph, ImageRun } from "docx";
+import PptxGenJS from "pptxgenjs";
 
 
 const worker = new Worker(
@@ -260,6 +261,48 @@ const worker = new Worker(
                 throw err;
             }
         }
+
+        // ---------------- IMAGE → PPTX ----------------
+        if (conversionType === "image->pptx") {
+            console.log("📊 Image → PPTX started");
+
+            try {
+                const pptx = new PptxGenJS();
+
+                for (const file of files) {
+                    console.log("🖼 Adding slide for:", file.originalname);
+
+                    const slide = pptx.addSlide();
+
+                    slide.addImage({
+                        path: file.path,
+                        x: 0.5,
+                        y: 0.5,
+                        w: 9,
+                        h: 5,
+                    });
+                }
+
+                const outputDir = path.join("uploads", "tmp", jobId);
+
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                const outputPath = path.join(outputDir, "output.pptx");
+
+                await pptx.writeFile({ fileName: outputPath });
+
+                console.log("✅ Image → PPTX done");
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ Image → PPTX FAILED:", err);
+                throw err;
+            }
+        }
+
 
 
 
