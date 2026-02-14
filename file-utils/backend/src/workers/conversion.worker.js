@@ -4,6 +4,7 @@ import { PDFDocument } from "pdf-lib";
 import fs from "fs";
 import path from "path";
 import { Poppler } from "node-poppler";
+import { Document, Packer, Paragraph, ImageRun } from "docx";
 
 
 const worker = new Worker(
@@ -202,6 +203,64 @@ const worker = new Worker(
                 throw err;
             }
         }
+
+        // ---------------- IMAGE → DOCX ----------------
+        if (conversionType === "image->docx") {
+            console.log("📄 Image → DOCX started");
+
+            try {
+                const doc = new Document({
+                    sections: [
+                        {
+                            children: [],
+                        },
+                    ],
+                });
+
+                for (const file of files) {
+                    console.log("🖼 Adding image:", file.originalname);
+
+                    const image = fs.readFileSync(file.path);
+
+                    doc.addSection({
+                        children: [
+                            new Paragraph({
+                                children: [
+                                    new ImageRun({
+                                        data: image,
+                                        transformation: {
+                                            width: 500,
+                                            height: 300,
+                                        },
+                                    }),
+                                ],
+                            }),
+                        ],
+                    });
+                }
+
+                const buffer = await Packer.toBuffer(doc);
+
+                const outputDir = path.join("uploads", "tmp", jobId);
+
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                const outputPath = path.join(outputDir, "output.docx");
+
+                fs.writeFileSync(outputPath, buffer);
+
+                console.log("✅ Image → DOCX done");
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ Image → DOCX FAILED:", err);
+                throw err;
+            }
+        }
+
 
 
 
