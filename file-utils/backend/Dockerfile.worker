@@ -1,6 +1,7 @@
 FROM node:18
 
-RUN apt-get update && apt-get install -y poppler-utils
+RUN apt-get update && apt-get install -y poppler-utils ghostscript
+
 
 WORKDIR /app
 

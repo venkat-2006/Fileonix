@@ -7,6 +7,8 @@ import { Poppler } from "node-poppler";
 
 import PptxGenJS from "pptxgenjs";
 import { Document, Packer, Paragraph, ImageRun, TextRun, AlignmentType, BorderStyle, Table, TableRow, TableCell, WidthType } from "docx";
+import { exec } from "child_process";
+
 
 
 // Helper function to create tables (moved outside worker)
@@ -366,185 +368,185 @@ const worker = new Worker(
         }
 
 
-// ---------------- PDF → DOCX (ENHANCED) ----------------
-if (conversionType === "pdf->docx") {
-    console.log("📄 PDF → DOCX started (Enhanced)");
+        // ---------------- PDF → DOCX (ENHANCED) ----------------
+        if (conversionType === "pdf->docx") {
+            console.log("📄 PDF → DOCX started (Enhanced)");
 
-    try {
-        const pdfFile = files[0];
-        const poppler = new Poppler();
+            try {
+                const pdfFile = files[0];
+                const poppler = new Poppler();
 
-        const outputDir = path.join("uploads", "tmp", jobId);
-        if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-        }
-
-        const tempTxtPath = path.join(outputDir, "temp.txt");
-
-        // Extract text with layout preservation
-        // Use the correct option format for node-poppler
-        await poppler.pdfToText(pdfFile.path, tempTxtPath, {
-            maintainLayout: true  // ⭐ Changed from 'layout' to 'maintainLayout'
-        });
-
-        const extractedText = fs.readFileSync(tempTxtPath, "utf-8");
-        const lines = extractedText.split(/\r?\n/);
-
-        const paragraphs = [];
-        let inTable = false;
-        let tableRows = [];
-
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            const trimmedLine = line.trim();
-
-            // Skip completely empty lines
-            if (!trimmedLine) {
-                if (!inTable && paragraphs.length > 0) {
-                    paragraphs.push(new Paragraph({ text: "" }));
+                const outputDir = path.join("uploads", "tmp", jobId);
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
                 }
-                continue;
-            }
 
-            // 🎯 DETECT DOCUMENT HEADER (multi-line centered text at start)
-            if (i < 5 && trimmedLine.length > 0) {
-                paragraphs.push(
-                    new Paragraph({
-                        children: [
-                            new TextRun({
-                                text: trimmedLine,
-                                bold: true,
-                                size: i === 0 ? 28 : 22,
-                            }),
-                        ],
-                        alignment: AlignmentType.CENTER,
-                        spacing: { after: 100 },
-                    })
-                );
-                continue;
-            }
+                const tempTxtPath = path.join(outputDir, "temp.txt");
 
-            // 🎯 DETECT SECTION HEADERS (ALL CAPS, standalone)
-            const isHeader =
-                trimmedLine === trimmedLine.toUpperCase() &&
-                trimmedLine.length < 50 &&
-                !trimmedLine.includes("::") &&
-                /^[A-Z\s]+$/.test(trimmedLine);
+                // Extract text with layout preservation
+                // Use the correct option format for node-poppler
+                await poppler.pdfToText(pdfFile.path, tempTxtPath, {
+                    maintainLayout: true  // ⭐ Changed from 'layout' to 'maintainLayout'
+                });
 
-            if (isHeader) {
-                paragraphs.push(
-                    new Paragraph({
-                        children: [
-                            new TextRun({
-                                text: trimmedLine,
-                                bold: true,
-                                size: 26,
-                                color: "1F4788",
-                            }),
-                        ],
-                        spacing: { before: 300, after: 200 },
-                        border: {
-                            bottom: {
-                                color: "1F4788",
-                                space: 1,
-                                style: BorderStyle.SINGLE,
-                                size: 6,
-                            },
-                        },
-                    })
-                );
-                continue;
-            }
+                const extractedText = fs.readFileSync(tempTxtPath, "utf-8");
+                const lines = extractedText.split(/\r?\n/);
 
-            // 🎯 DETECT KEY-VALUE PAIRS with "::"
-            if (trimmedLine.includes("::")) {
-                const parts = trimmedLine.split("::");
-                if (parts.length === 2) {
+                const paragraphs = [];
+                let inTable = false;
+                let tableRows = [];
+
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i];
+                    const trimmedLine = line.trim();
+
+                    // Skip completely empty lines
+                    if (!trimmedLine) {
+                        if (!inTable && paragraphs.length > 0) {
+                            paragraphs.push(new Paragraph({ text: "" }));
+                        }
+                        continue;
+                    }
+
+                    // 🎯 DETECT DOCUMENT HEADER (multi-line centered text at start)
+                    if (i < 5 && trimmedLine.length > 0) {
+                        paragraphs.push(
+                            new Paragraph({
+                                children: [
+                                    new TextRun({
+                                        text: trimmedLine,
+                                        bold: true,
+                                        size: i === 0 ? 28 : 22,
+                                    }),
+                                ],
+                                alignment: AlignmentType.CENTER,
+                                spacing: { after: 100 },
+                            })
+                        );
+                        continue;
+                    }
+
+                    // 🎯 DETECT SECTION HEADERS (ALL CAPS, standalone)
+                    const isHeader =
+                        trimmedLine === trimmedLine.toUpperCase() &&
+                        trimmedLine.length < 50 &&
+                        !trimmedLine.includes("::") &&
+                        /^[A-Z\s]+$/.test(trimmedLine);
+
+                    if (isHeader) {
+                        paragraphs.push(
+                            new Paragraph({
+                                children: [
+                                    new TextRun({
+                                        text: trimmedLine,
+                                        bold: true,
+                                        size: 26,
+                                        color: "1F4788",
+                                    }),
+                                ],
+                                spacing: { before: 300, after: 200 },
+                                border: {
+                                    bottom: {
+                                        color: "1F4788",
+                                        space: 1,
+                                        style: BorderStyle.SINGLE,
+                                        size: 6,
+                                    },
+                                },
+                            })
+                        );
+                        continue;
+                    }
+
+                    // 🎯 DETECT KEY-VALUE PAIRS with "::"
+                    if (trimmedLine.includes("::")) {
+                        const parts = trimmedLine.split("::");
+                        if (parts.length === 2) {
+                            paragraphs.push(
+                                new Paragraph({
+                                    children: [
+                                        new TextRun({
+                                            text: parts[0].trim() + ": ",
+                                            bold: true,
+                                            size: 22,
+                                        }),
+                                        new TextRun({
+                                            text: parts[1].trim(),
+                                            size: 22,
+                                        }),
+                                    ],
+                                    spacing: { after: 120 },
+                                })
+                            );
+                            continue;
+                        }
+                    }
+
+                    // 🎯 DETECT TABLE-LIKE CONTENT (multiple "::" or aligned content)
+                    const hasMultipleColons = (trimmedLine.match(/::/g) || []).length >= 2;
+                    if (hasMultipleColons) {
+                        if (!inTable) {
+                            inTable = true;
+                            tableRows = [];
+                        }
+                        tableRows.push(trimmedLine);
+                        continue;
+                    } else if (inTable) {
+                        // End of table - create table in DOCX
+                        paragraphs.push(createTableFromRows(tableRows));
+                        inTable = false;
+                        tableRows = [];
+                    }
+
+                    // 🎯 NORMAL TEXT
                     paragraphs.push(
                         new Paragraph({
                             children: [
                                 new TextRun({
-                                    text: parts[0].trim() + ": ",
-                                    bold: true,
-                                    size: 22,
-                                }),
-                                new TextRun({
-                                    text: parts[1].trim(),
+                                    text: trimmedLine,
                                     size: 22,
                                 }),
                             ],
                             spacing: { after: 120 },
                         })
                     );
-                    continue;
                 }
-            }
 
-            // 🎯 DETECT TABLE-LIKE CONTENT (multiple "::" or aligned content)
-            const hasMultipleColons = (trimmedLine.match(/::/g) || []).length >= 2;
-            if (hasMultipleColons) {
-                if (!inTable) {
-                    inTable = true;
-                    tableRows = [];
+                // Handle any remaining table
+                if (tableRows.length > 0) {
+                    paragraphs.push(createTableFromRows(tableRows));
                 }
-                tableRows.push(trimmedLine);
-                continue;
-            } else if (inTable) {
-                // End of table - create table in DOCX
-                paragraphs.push(createTableFromRows(tableRows));
-                inTable = false;
-                tableRows = [];
-            }
 
-            // 🎯 NORMAL TEXT
-            paragraphs.push(
-                new Paragraph({
-                    children: [
-                        new TextRun({
-                            text: trimmedLine,
-                            size: 22,
-                        }),
-                    ],
-                    spacing: { after: 120 },
-                })
-            );
-        }
-
-        // Handle any remaining table
-        if (tableRows.length > 0) {
-            paragraphs.push(createTableFromRows(tableRows));
-        }
-
-        const doc = new Document({
-            sections: [
-                {
-                    properties: {
-                        page: {
-                            margin: {
-                                top: 1440,    // 1 inch
-                                right: 1440,
-                                bottom: 1440,
-                                left: 1440,
+                const doc = new Document({
+                    sections: [
+                        {
+                            properties: {
+                                page: {
+                                    margin: {
+                                        top: 1440,    // 1 inch
+                                        right: 1440,
+                                        bottom: 1440,
+                                        left: 1440,
+                                    },
+                                },
                             },
+                            children: paragraphs,
                         },
-                    },
-                    children: paragraphs,
-                },
-            ],
-        });
+                    ],
+                });
 
-        const buffer = await Packer.toBuffer(doc);
-        const outputPath = path.join(outputDir, "output.docx");
-        fs.writeFileSync(outputPath, buffer);
+                const buffer = await Packer.toBuffer(doc);
+                const outputPath = path.join(outputDir, "output.docx");
+                fs.writeFileSync(outputPath, buffer);
 
-        console.log("✅ DOCX created from PDF (Enhanced)");
-        return { success: true, outputPath };
+                console.log("✅ DOCX created from PDF (Enhanced)");
+                return { success: true, outputPath };
 
-    } catch (err) {
-        console.error("❌ PDF → DOCX FAILED:", err);
-        throw err;
-    }
-}
+            } catch (err) {
+                console.error("❌ PDF → DOCX FAILED:", err);
+                throw err;
+            }
+        }
         // ---------------- TXT → DOCX ----------------
         if (conversionType === "txt->docx") {
             console.log("📝 TXT → DOCX started");
@@ -600,6 +602,91 @@ if (conversionType === "pdf->docx") {
             }
         }
 
+        // ---------------- PDF COMPRESSION (BEST) ----------------
+        if (conversionType === "pdf->compress") {
+            console.log("🗜️ PDF Compression started");
+
+            try {
+                const inputPdf = files[0].path;
+                const outputDir = path.join("uploads", "tmp", jobId);
+
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                const originalSize = fs.statSync(inputPdf).size;
+                console.log(`📊 Original size: ${(originalSize / 1024).toFixed(0)} KB`);
+
+                // 🎯 STRATEGY 1: Try /screen quality (most aggressive)
+                const screenPath = path.join(outputDir, "compressed_screen.pdf");
+                await new Promise((resolve, reject) => {
+                    exec(
+                        `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${screenPath}" "${inputPdf}"`,
+                        (error) => error ? reject(error) : resolve()
+                    );
+                });
+                const screenSize = fs.statSync(screenPath).size;
+
+                // 🎯 STRATEGY 2: Try /ebook quality (balanced)
+                const ebookPath = path.join(outputDir, "compressed_ebook.pdf");
+                await new Promise((resolve, reject) => {
+                    exec(
+                        `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${ebookPath}" "${inputPdf}"`,
+                        (error) => error ? reject(error) : resolve()
+                    );
+                });
+                const ebookSize = fs.statSync(ebookPath).size;
+
+                // 🎯 STRATEGY 3: Try /printer quality (high quality)
+                const printerPath = path.join(outputDir, "compressed_printer.pdf");
+                await new Promise((resolve, reject) => {
+                    exec(
+                        `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${printerPath}" "${inputPdf}"`,
+                        (error) => error ? reject(error) : resolve()
+                    );
+                });
+                const printerSize = fs.statSync(printerPath).size;
+
+                console.log(`📉 /screen: ${(screenSize / 1024).toFixed(0)} KB | /ebook: ${(ebookSize / 1024).toFixed(0)} KB | /printer: ${(printerSize / 1024).toFixed(0)} KB`);
+
+                // 🧠 Pick the smallest file that's smaller than original
+                const options = [
+                    { path: screenPath, size: screenSize, quality: "screen" },
+                    { path: ebookPath, size: ebookSize, quality: "ebook" },
+                    { path: printerPath, size: printerSize, quality: "printer" },
+                ].filter(opt => opt.size < originalSize).sort((a, b) => a.size - b.size);
+
+                const finalOutputPath = path.join(outputDir, "compressed.pdf");
+
+                if (options.length > 0) {
+                    const best = options[0];
+                    fs.copyFileSync(best.path, finalOutputPath);
+
+                    // Cleanup
+                    [screenPath, ebookPath, printerPath].forEach(p => {
+                        if (fs.existsSync(p)) fs.unlinkSync(p);
+                    });
+
+                    const reduction = ((1 - best.size / originalSize) * 100).toFixed(1);
+                    console.log(`✅ Best: /${best.quality} | ${(originalSize / 1024).toFixed(0)} KB → ${(best.size / 1024).toFixed(0)} KB (${reduction}% reduction)`);
+
+                    return { success: true, outputPath: finalOutputPath };
+                } else {
+                    // Return original
+                    fs.copyFileSync(inputPdf, finalOutputPath);
+                    [screenPath, ebookPath, printerPath].forEach(p => {
+                        if (fs.existsSync(p)) fs.unlinkSync(p);
+                    });
+
+                    console.log(`⚠️ No compression possible - returning original`);
+                    return { success: true, outputPath: finalOutputPath };
+                }
+
+            } catch (err) {
+                console.error("❌ PDF Compression FAILED:", err);
+                throw err;
+            }
+        }
 
         console.log("❌ Unsupported conversion");
         return { success: false };
