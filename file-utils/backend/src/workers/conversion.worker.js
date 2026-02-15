@@ -4,8 +4,43 @@ import { PDFDocument } from "pdf-lib";
 import fs from "fs";
 import path from "path";
 import { Poppler } from "node-poppler";
-import { Document, Packer, Paragraph, ImageRun, TextRun } from "docx";
+
 import PptxGenJS from "pptxgenjs";
+import { Document, Packer, Paragraph, ImageRun, TextRun, AlignmentType, BorderStyle, Table, TableRow, TableCell, WidthType } from "docx";
+
+
+// Helper function to create tables (moved outside worker)
+function createTableFromRows(rows) {
+    const tableRows = rows.map(row => {
+        const cells = row.split("::").map(cell =>
+            new TableCell({
+                children: [
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: cell.trim(),
+                                size: 20,
+                            }),
+                        ],
+                    }),
+                ],
+                shading: {
+                    fill: "F3F3F3",
+                },
+            })
+        );
+
+        return new TableRow({ children: cells });
+    });
+
+    return new Table({
+        rows: tableRows,
+        width: {
+            size: 100,
+            type: WidthType.PERCENTAGE,
+        },
+    });
+}
 
 
 const worker = new Worker(
@@ -331,7 +366,185 @@ const worker = new Worker(
         }
 
 
-        // ---------------- TXT → DOCX ----------------
+// ---------------- PDF → DOCX (ENHANCED) ----------------
+if (conversionType === "pdf->docx") {
+    console.log("📄 PDF → DOCX started (Enhanced)");
+
+    try {
+        const pdfFile = files[0];
+        const poppler = new Poppler();
+
+        const outputDir = path.join("uploads", "tmp", jobId);
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        const tempTxtPath = path.join(outputDir, "temp.txt");
+
+        // Extract text with layout preservation
+        // Use the correct option format for node-poppler
+        await poppler.pdfToText(pdfFile.path, tempTxtPath, {
+            maintainLayout: true  // ⭐ Changed from 'layout' to 'maintainLayout'
+        });
+
+        const extractedText = fs.readFileSync(tempTxtPath, "utf-8");
+        const lines = extractedText.split(/\r?\n/);
+
+        const paragraphs = [];
+        let inTable = false;
+        let tableRows = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i];
+            const trimmedLine = line.trim();
+
+            // Skip completely empty lines
+            if (!trimmedLine) {
+                if (!inTable && paragraphs.length > 0) {
+                    paragraphs.push(new Paragraph({ text: "" }));
+                }
+                continue;
+            }
+
+            // 🎯 DETECT DOCUMENT HEADER (multi-line centered text at start)
+            if (i < 5 && trimmedLine.length > 0) {
+                paragraphs.push(
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: trimmedLine,
+                                bold: true,
+                                size: i === 0 ? 28 : 22,
+                            }),
+                        ],
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 100 },
+                    })
+                );
+                continue;
+            }
+
+            // 🎯 DETECT SECTION HEADERS (ALL CAPS, standalone)
+            const isHeader =
+                trimmedLine === trimmedLine.toUpperCase() &&
+                trimmedLine.length < 50 &&
+                !trimmedLine.includes("::") &&
+                /^[A-Z\s]+$/.test(trimmedLine);
+
+            if (isHeader) {
+                paragraphs.push(
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: trimmedLine,
+                                bold: true,
+                                size: 26,
+                                color: "1F4788",
+                            }),
+                        ],
+                        spacing: { before: 300, after: 200 },
+                        border: {
+                            bottom: {
+                                color: "1F4788",
+                                space: 1,
+                                style: BorderStyle.SINGLE,
+                                size: 6,
+                            },
+                        },
+                    })
+                );
+                continue;
+            }
+
+            // 🎯 DETECT KEY-VALUE PAIRS with "::"
+            if (trimmedLine.includes("::")) {
+                const parts = trimmedLine.split("::");
+                if (parts.length === 2) {
+                    paragraphs.push(
+                        new Paragraph({
+                            children: [
+                                new TextRun({
+                                    text: parts[0].trim() + ": ",
+                                    bold: true,
+                                    size: 22,
+                                }),
+                                new TextRun({
+                                    text: parts[1].trim(),
+                                    size: 22,
+                                }),
+                            ],
+                            spacing: { after: 120 },
+                        })
+                    );
+                    continue;
+                }
+            }
+
+            // 🎯 DETECT TABLE-LIKE CONTENT (multiple "::" or aligned content)
+            const hasMultipleColons = (trimmedLine.match(/::/g) || []).length >= 2;
+            if (hasMultipleColons) {
+                if (!inTable) {
+                    inTable = true;
+                    tableRows = [];
+                }
+                tableRows.push(trimmedLine);
+                continue;
+            } else if (inTable) {
+                // End of table - create table in DOCX
+                paragraphs.push(createTableFromRows(tableRows));
+                inTable = false;
+                tableRows = [];
+            }
+
+            // 🎯 NORMAL TEXT
+            paragraphs.push(
+                new Paragraph({
+                    children: [
+                        new TextRun({
+                            text: trimmedLine,
+                            size: 22,
+                        }),
+                    ],
+                    spacing: { after: 120 },
+                })
+            );
+        }
+
+        // Handle any remaining table
+        if (tableRows.length > 0) {
+            paragraphs.push(createTableFromRows(tableRows));
+        }
+
+        const doc = new Document({
+            sections: [
+                {
+                    properties: {
+                        page: {
+                            margin: {
+                                top: 1440,    // 1 inch
+                                right: 1440,
+                                bottom: 1440,
+                                left: 1440,
+                            },
+                        },
+                    },
+                    children: paragraphs,
+                },
+            ],
+        });
+
+        const buffer = await Packer.toBuffer(doc);
+        const outputPath = path.join(outputDir, "output.docx");
+        fs.writeFileSync(outputPath, buffer);
+
+        console.log("✅ DOCX created from PDF (Enhanced)");
+        return { success: true, outputPath };
+
+    } catch (err) {
+        console.error("❌ PDF → DOCX FAILED:", err);
+        throw err;
+    }
+}
         // ---------------- TXT → DOCX ----------------
         if (conversionType === "txt->docx") {
             console.log("📝 TXT → DOCX started");
