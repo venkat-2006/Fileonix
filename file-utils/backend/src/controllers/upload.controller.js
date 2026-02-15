@@ -2,7 +2,7 @@ import { conversionQueue } from "../queues/conversion.queue.js";
 
 export const uploadFiles = async (req, res) => {
   const jobId = req.jobId;
-  const { conversionType, watermarkText } = req.body;
+  const { conversionType, watermarkText, password } = req.body;  //  Add password
 
   console.log("📥 Upload received");
   console.log("🆔 Job:", jobId);
@@ -10,7 +10,8 @@ export const uploadFiles = async (req, res) => {
   await conversionQueue.add("convert", {
     jobId,
     conversionType,
-    watermarkText,  
+    watermarkText,
+    password,  //  Pass password to queue
     files: req.files,
   });
 
