@@ -793,6 +793,52 @@ const worker = new Worker(
                 throw err;
             }
         }
+// ---------------- PDF REMOVE PASSWORD ----------------
+if (conversionType === "pdf->unlock") {
+    console.log("🔓 PDF Unlock started");
+
+    try {
+        const inputPdf = files[0].path;
+        const { password } = job.data;
+
+        if (!password) {
+            throw new Error("❌ Password required to unlock PDF");
+        }
+
+        const outputDir = path.join("uploads", "tmp", jobId);
+        
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        const outputPath = path.join(outputDir, "unlocked.pdf");
+
+        // ✅ Use Ghostscript to remove password
+        await new Promise((resolve, reject) => {
+            exec(
+                `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dNOPAUSE -dQUIET -dBATCH -sPDFPassword="${password}" -sOutputFile="${outputPath}" "${inputPdf}"`,
+                (error, stdout, stderr) => {
+                    if (error) {
+                        console.error("❌ Unlock failed:", error);
+                        console.error("stderr:", stderr);
+                        reject(error);
+                    } else {
+                        console.log("📊 Ghostscript output:", stdout);
+                        resolve();
+                    }
+                }
+            );
+        });
+
+        console.log("✅ PDF Unlocked");
+
+        return { success: true, outputPath };
+
+    } catch (err) {
+        console.error("❌ PDF Unlock FAILED:", err);
+        throw err;
+    }
+}
 
         console.log("❌ Unsupported conversion");
         return { success: false };
