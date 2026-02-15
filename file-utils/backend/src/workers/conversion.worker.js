@@ -4,7 +4,7 @@ import { PDFDocument } from "pdf-lib";
 import fs from "fs";
 import path from "path";
 import { Poppler } from "node-poppler";
-import { Document, Packer, Paragraph, ImageRun } from "docx";
+import { Document, Packer, Paragraph, ImageRun, TextRun } from "docx";
 import PptxGenJS from "pptxgenjs";
 
 
@@ -302,9 +302,90 @@ const worker = new Worker(
                 throw err;
             }
         }
+        // ---------------- PDF → TXT ----------------
+        if (conversionType === "pdf->txt") {
+            console.log("🧾 PDF → TXT started");
+
+            try {
+                const poppler = new Poppler();
+                const inputPdf = files[0].path;
+
+                const outputDir = path.join("uploads", "tmp", jobId);
+
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                const outputPath = path.join(outputDir, "extracted.txt");
+
+                await poppler.pdfToText(inputPdf, outputPath);
+
+                console.log("✅ Text extracted from PDF");
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ PDF → TXT FAILED:", err);
+                throw err;
+            }
+        }
 
 
+        // ---------------- TXT → DOCX ----------------
+        // ---------------- TXT → DOCX ----------------
+        if (conversionType === "txt->docx") {
+            console.log("📝 TXT → DOCX started");
 
+            try {
+                const inputTxt = files[0].path;
+                const textContent = fs.readFileSync(inputTxt, "utf-8");
+
+                // ✅ Split text into lines
+                const lines = textContent.split(/\r?\n/);
+
+                const paragraphs = lines.map(line =>
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: line,
+                                size: 24,          // 12pt (Word uses half-points)
+                                font: "Calibri",
+                            }),
+                        ],
+                        spacing: {
+                            after: 200,           // spacing after paragraph
+                        },
+                    })
+                );
+
+                const doc = new Document({
+                    sections: [
+                        {
+                            children: paragraphs,
+                        },
+                    ],
+                });
+
+                const buffer = await Packer.toBuffer(doc);
+
+                const outputDir = path.join("uploads", "tmp", jobId);
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                const outputPath = path.join(outputDir, "output.docx");
+
+                fs.writeFileSync(outputPath, buffer);
+
+                console.log("✅ DOCX created from TXT");
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ TXT → DOCX FAILED:", err);
+                throw err;
+            }
+        }
 
 
         console.log("❌ Unsupported conversion");
