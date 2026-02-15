@@ -1,10 +1,9 @@
 import { Worker } from "bullmq";
 import { redisConnection } from "../config/redis.js";
-import { PDFDocument } from "pdf-lib";
 import fs from "fs";
 import path from "path";
 import { Poppler } from "node-poppler";
-
+import { PDFDocument, degrees } from "pdf-lib";
 import PptxGenJS from "pptxgenjs";
 import { Document, Packer, Paragraph, ImageRun, TextRun, AlignmentType, BorderStyle, Table, TableRow, TableCell, WidthType } from "docx";
 import { exec } from "child_process";
@@ -793,52 +792,98 @@ const worker = new Worker(
                 throw err;
             }
         }
-// ---------------- PDF REMOVE PASSWORD ----------------
-if (conversionType === "pdf->unlock") {
-    console.log("🔓 PDF Unlock started");
+        // ---------------- PDF REMOVE PASSWORD ----------------
+        if (conversionType === "pdf->unlock") {
+            console.log("🔓 PDF Unlock started");
 
-    try {
-        const inputPdf = files[0].path;
-        const { password } = job.data;
+            try {
+                const inputPdf = files[0].path;
+                const { password } = job.data;
 
-        if (!password) {
-            throw new Error("❌ Password required to unlock PDF");
-        }
-
-        const outputDir = path.join("uploads", "tmp", jobId);
-        
-        if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-        }
-
-        const outputPath = path.join(outputDir, "unlocked.pdf");
-
-        // ✅ Use Ghostscript to remove password
-        await new Promise((resolve, reject) => {
-            exec(
-                `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dNOPAUSE -dQUIET -dBATCH -sPDFPassword="${password}" -sOutputFile="${outputPath}" "${inputPdf}"`,
-                (error, stdout, stderr) => {
-                    if (error) {
-                        console.error("❌ Unlock failed:", error);
-                        console.error("stderr:", stderr);
-                        reject(error);
-                    } else {
-                        console.log("📊 Ghostscript output:", stdout);
-                        resolve();
-                    }
+                if (!password) {
+                    throw new Error("❌ Password required to unlock PDF");
                 }
-            );
-        });
 
-        console.log("✅ PDF Unlocked");
+                const outputDir = path.join("uploads", "tmp", jobId);
 
-        return { success: true, outputPath };
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
 
-    } catch (err) {
-        console.error("❌ PDF Unlock FAILED:", err);
-        throw err;
-    }
-}
+                const outputPath = path.join(outputDir, "unlocked.pdf");
+
+                // ✅ Use Ghostscript to remove password
+                await new Promise((resolve, reject) => {
+                    exec(
+                        `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dNOPAUSE -dQUIET -dBATCH -sPDFPassword="${password}" -sOutputFile="${outputPath}" "${inputPdf}"`,
+                        (error, stdout, stderr) => {
+                            if (error) {
+                                console.error("❌ Unlock failed:", error);
+                                console.error("stderr:", stderr);
+                                reject(error);
+                            } else {
+                                console.log("📊 Ghostscript output:", stdout);
+                                resolve();
+                            }
+                        }
+                    );
+                });
+
+                console.log("✅ PDF Unlocked");
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ PDF Unlock FAILED:", err);
+                throw err;
+            }
+        }
+        // ---------------- PDF ROTATE ----------------
+        if (conversionType === "pdf->rotate") {
+            console.log("🔄 PDF Rotate started");
+
+            try {
+                const inputPdf = files[0].path;
+                const { angle } = job.data;
+
+                const rotation = parseInt(angle) || 90;
+
+                // Validate rotation angle
+                if (![90, 180, 270, -90].includes(rotation)) {
+                    throw new Error("❌ Invalid rotation angle. Use 90, 180, or 270");
+                }
+
+                const outputDir = path.join("uploads", "tmp", jobId);
+
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                const pdfBytes = fs.readFileSync(inputPdf);
+                const pdfDoc = await PDFDocument.load(pdfBytes);
+
+                const pages = pdfDoc.getPages();
+
+                // Rotate all pages
+                pages.forEach(page => {
+                    const currentRotation = page.getRotation().angle;
+                    page.setRotation(degrees(currentRotation + rotation));
+                });
+
+                const rotatedBytes = await pdfDoc.save();
+
+                const outputPath = path.join(outputDir, "rotated.pdf");
+                fs.writeFileSync(outputPath, rotatedBytes);
+
+                console.log(`✅ PDF Rotated by ${rotation}°`);
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ PDF Rotate FAILED:", err);
+                throw err;
+            }
+        }
 
         console.log("❌ Unsupported conversion");
         return { success: false };
