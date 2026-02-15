@@ -2,7 +2,7 @@ import { conversionQueue } from "../queues/conversion.queue.js";
 
 export const uploadFiles = async (req, res) => {
   const jobId = req.jobId;
-  const { conversionType, watermarkText, password ,angle } = req.body;  //  Add password
+  const { conversionType, watermarkText, password ,angle,order } = req.body;  //  Add password
 
   console.log("📥 Upload received");
   console.log("🆔 Job:", jobId);
@@ -13,6 +13,7 @@ export const uploadFiles = async (req, res) => {
     watermarkText,
     password,  //  Pass password to queue
      angle,
+     order,
     files: req.files,
   });
 

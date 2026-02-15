@@ -885,6 +885,76 @@ const worker = new Worker(
             }
         }
 
+       // ---------------- PDF REORDER ----------------
+if (conversionType === "pdf->reorder") {
+    console.log("📑 PDF Reorder started");
+
+    try {
+        if (!files || files.length === 0) {
+            throw new Error("No PDF file provided");
+        }
+
+        const inputPdf = files[0].path;
+        const { order } = job.data;
+
+        if (!order || order.trim() === "") {
+            throw new Error("Page order is required");
+        }
+
+        // Ensure outputDir exists (same as rotate)
+        const outputDir = path.join("uploads", "tmp", jobId);
+
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        // Convert order → array
+        const orderArray = order.split(",")
+            .map(n => n.trim())
+            .filter(n => n !== "")
+            .map(n => {
+                const pageNum = parseInt(n, 10);
+
+                if (isNaN(pageNum)) {
+                    throw new Error(`Invalid page value: "${n}"`);
+                }
+
+                return pageNum - 1; // zero-based index
+            });
+
+        const pdfBytes = fs.readFileSync(inputPdf);
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+
+        const totalPages = pdfDoc.getPageCount();
+
+        // Validate pages
+        orderArray.forEach(p => {
+            if (p < 0 || p >= totalPages) {
+                throw new Error(`Invalid page number: ${p + 1}`);
+            }
+        });
+
+        const newPdf = await PDFDocument.create();
+
+        const pages = await newPdf.copyPages(pdfDoc, orderArray);
+        pages.forEach(page => newPdf.addPage(page));
+
+        const reorderedBytes = await newPdf.save();
+
+        const outputPath = path.join(outputDir, "reordered.pdf");
+        fs.writeFileSync(outputPath, reorderedBytes);
+
+        console.log("✅ PDF Reordered Successfully");
+
+        return { success: true, outputPath };
+
+    } catch (err) {
+        console.error("❌ PDF Reorder FAILED:", err);
+        throw err;
+    }
+}
+
+
         console.log("❌ Unsupported conversion");
         return { success: false };
     },
