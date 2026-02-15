@@ -1,7 +1,10 @@
-FROM node:18
+FROM node:20
 
-RUN apt-get update && apt-get install -y poppler-utils ghostscript
-
+RUN apt-get update && apt-get install -y \
+    poppler-utils \
+    ghostscript \
+    tesseract-ocr \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

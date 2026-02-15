@@ -7,7 +7,7 @@ import { PDFDocument, degrees } from "pdf-lib";
 import PptxGenJS from "pptxgenjs";
 import { Document, Packer, Paragraph, ImageRun, TextRun, AlignmentType, BorderStyle, Table, TableRow, TableCell, WidthType } from "docx";
 import { exec } from "child_process";
-
+import { extractTextFromImage } from "../utils/ocr.js";
 
 
 // Helper function to create tables (moved outside worker)
@@ -1036,6 +1036,57 @@ if (conversionType === "pdf->delete") {
         throw err;
     }
 }
+if (conversionType === "image->txt") {
+  console.log("🔍 OCR Image → TXT started");
+
+  let finalText = "";
+
+  for (const file of files) {
+    const text = await extractTextFromImage(file.path);
+    finalText += `\n--- ${file.originalname} ---\n`;
+    finalText += text;
+  }
+
+  const outputPath = path.join("uploads", "tmp", jobId, "ocr.txt");
+  fs.writeFileSync(outputPath, finalText);
+
+  console.log("✅ OCR extraction done");
+
+  return { success: true, outputPath };
+}
+if (conversionType === "pdf->ocr") {
+  console.log("🔍 OCR PDF started");
+
+  const poppler = new Poppler();
+  const outputDir = path.join("uploads", "tmp", jobId, "ocr-pages");
+
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  const pdfPath = files[0].path;
+
+  await poppler.pdfToCairo(pdfPath, path.join(outputDir, "page"), {
+    pngFile: true,
+  });
+
+  const images = fs.readdirSync(outputDir);
+
+  let finalText = "";
+
+  for (const img of images) {
+    const imgPath = path.join(outputDir, img);
+    const text = await extractTextFromImage(imgPath);
+    finalText += `\n--- ${img} ---\n`;
+    finalText += text;
+  }
+
+  const outputPath = path.join("uploads", "tmp", jobId, "ocr.txt");
+  fs.writeFileSync(outputPath, finalText);
+
+  console.log("✅ OCR PDF done");
+
+  return { success: true, outputPath };
+}
+
 
         console.log("❌ Unsupported conversion");
         return { success: false };
