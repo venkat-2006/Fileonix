@@ -334,7 +334,7 @@ const worker = new Worker(
                 return { success: true, outputPath };
 
             } catch (err) {
-                console.error("❌ Image → PPTX FAILED:", err);
+                console.error("❌ Image → pdf->pptX FAILED:", err);
                 throw err;
             }
         }
@@ -954,6 +954,88 @@ if (conversionType === "pdf->reorder") {
     }
 }
 
+// ---------------- PDF DELETE PAGES ----------------
+if (conversionType === "pdf->delete") {
+    console.log("🗑 PDF Delete Pages started");
+
+    try {
+        if (!files || files.length === 0) {
+            throw new Error("No PDF file provided");
+        }
+
+        const inputPdf = files[0].path;
+        const { pages } = job.data;
+
+        if (!pages || pages.trim() === "") {
+            throw new Error("Pages parameter required (e.g. 2,5,7)");
+        }
+
+        // Ensure outputDir exists
+        const outputDir = path.join("uploads", "tmp", jobId);
+
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        // Convert pages string → zero-based indices
+        const removePages = pages.split(",")
+            .map(n => n.trim())
+            .filter(n => n !== "")
+            .map(n => {
+                const pageNum = parseInt(n, 10);
+
+                if (isNaN(pageNum)) {
+                    throw new Error(`Invalid page value: "${n}"`);
+                }
+
+                return pageNum - 1;
+            });
+
+        const pdfBytes = fs.readFileSync(inputPdf);
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+
+        const totalPages = pdfDoc.getPageCount();
+
+        // Validate page numbers
+        removePages.forEach(p => {
+            if (p < 0 || p >= totalPages) {
+                throw new Error(`Invalid page number: ${p + 1}`);
+            }
+        });
+
+        // Remove duplicates (important)
+        const removeSet = new Set(removePages);
+
+        const keepPages = [];
+        for (let i = 0; i < totalPages; i++) {
+            if (!removeSet.has(i)) {
+                keepPages.push(i);
+            }
+        }
+
+        if (keepPages.length === 0) {
+            throw new Error("Cannot delete all pages");
+        }
+
+        const newPdf = await PDFDocument.create();
+
+        const copiedPages = await newPdf.copyPages(pdfDoc, keepPages);
+        copiedPages.forEach(page => newPdf.addPage(page));
+
+        const outputBytes = await newPdf.save();
+
+        const outputPath = path.join(outputDir, "pages-deleted.pdf");
+        fs.writeFileSync(outputPath, outputBytes);
+
+        console.log("✅ Pages deleted successfully");
+
+        return { success: true, outputPath };
+
+    } catch (err) {
+        console.error("❌ PDF Delete FAILED:", err);
+        throw err;
+    }
+}
 
         console.log("❌ Unsupported conversion");
         return { success: false };
