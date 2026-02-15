@@ -687,6 +687,65 @@ const worker = new Worker(
                 throw err;
             }
         }
+// ---------------- PDF WATERMARK ----------------
+if (conversionType === "pdf->watermark") {
+    console.log("💧 PDF Watermark started");
+    
+    try {
+        const inputPdf = files[0].path;
+        const { watermarkText } = job.data;
+        const outputDir = path.join("uploads", "tmp", jobId);
+        
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+        
+        const pdfBytes = fs.readFileSync(inputPdf);
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const pages = pdfDoc.getPages();
+        const text = watermarkText || "WATERMARK";
+        
+        // Apply watermark to each page
+        pages.forEach(page => {
+            const { width, height } = page.getSize();
+            
+            //  Dynamic font size based on page width
+            const fontSize = Math.min(width / text.length * 0.8, 100);
+            
+            //  Approximate text width
+            const textWidth = text.length * fontSize * 0.6;
+            
+            // TRUE CENTER positioning for 45° rotation
+            // When rotated 45°, we need to offset both x and y
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            // Offset to account for rotation pivot point
+            const offsetX = textWidth / 2 * Math.cos(Math.PI / 4);
+            const offsetY = textWidth / 2 * Math.sin(Math.PI / 4);
+            
+            page.drawText(text, {
+                x: centerX - offsetX,
+                y: centerY - offsetY,
+                size: fontSize,
+                opacity: 0.15,
+                rotate: { type: 'degrees', angle: 45 }
+            });
+        });
+        
+        const watermarkedBytes = await pdfDoc.save();
+        const outputPath = path.join(outputDir, "watermarked.pdf");
+        fs.writeFileSync(outputPath, watermarkedBytes);
+        
+        console.log(`✅ Watermark applied: "${text}"`);
+        
+        return { success: true, outputPath };
+        
+    } catch (err) {
+        console.error("❌ PDF Watermark FAILED:", err);
+        throw err;
+    }
+}
 
         console.log("❌ Unsupported conversion");
         return { success: false };
