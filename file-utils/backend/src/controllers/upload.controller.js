@@ -9,12 +9,14 @@ export const uploadFiles = async (req, res) => {
     password,
     angle,
     order,
-    pages   //  ADD THIS
+    pages,
+    language   // ADD THIS
   } = req.body;
 
   console.log("📥 Upload received");
   console.log("🆔 Job:", jobId);
   console.log("🔧 Conversion:", conversionType);
+  console.log("🌍 Language:", language || "eng");
 
   await conversionQueue.add("convert", {
     jobId,
@@ -23,7 +25,8 @@ export const uploadFiles = async (req, res) => {
     password,
     angle,
     order,
-    pages,          //  PASS TO WORKER
+    pages,
+    language: language || "eng",  //  DEFAULT ENGLISH
     files: req.files,
   });
 

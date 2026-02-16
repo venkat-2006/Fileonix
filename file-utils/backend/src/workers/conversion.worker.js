@@ -885,206 +885,476 @@ const worker = new Worker(
             }
         }
 
-       // ---------------- PDF REORDER ----------------
-if (conversionType === "pdf->reorder") {
-    console.log("📑 PDF Reorder started");
+        // ---------------- PDF REORDER ----------------
+        if (conversionType === "pdf->reorder") {
+            console.log("📑 PDF Reorder started");
 
-    try {
-        if (!files || files.length === 0) {
-            throw new Error("No PDF file provided");
-        }
-
-        const inputPdf = files[0].path;
-        const { order } = job.data;
-
-        if (!order || order.trim() === "") {
-            throw new Error("Page order is required");
-        }
-
-        // Ensure outputDir exists (same as rotate)
-        const outputDir = path.join("uploads", "tmp", jobId);
-
-        if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-        }
-
-        // Convert order → array
-        const orderArray = order.split(",")
-            .map(n => n.trim())
-            .filter(n => n !== "")
-            .map(n => {
-                const pageNum = parseInt(n, 10);
-
-                if (isNaN(pageNum)) {
-                    throw new Error(`Invalid page value: "${n}"`);
+            try {
+                if (!files || files.length === 0) {
+                    throw new Error("No PDF file provided");
                 }
 
-                return pageNum - 1; // zero-based index
+                const inputPdf = files[0].path;
+                const { order } = job.data;
+
+                if (!order || order.trim() === "") {
+                    throw new Error("Page order is required");
+                }
+
+                // Ensure outputDir exists (same as rotate)
+                const outputDir = path.join("uploads", "tmp", jobId);
+
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                // Convert order → array
+                const orderArray = order.split(",")
+                    .map(n => n.trim())
+                    .filter(n => n !== "")
+                    .map(n => {
+                        const pageNum = parseInt(n, 10);
+
+                        if (isNaN(pageNum)) {
+                            throw new Error(`Invalid page value: "${n}"`);
+                        }
+
+                        return pageNum - 1; // zero-based index
+                    });
+
+                const pdfBytes = fs.readFileSync(inputPdf);
+                const pdfDoc = await PDFDocument.load(pdfBytes);
+
+                const totalPages = pdfDoc.getPageCount();
+
+                // Validate pages
+                orderArray.forEach(p => {
+                    if (p < 0 || p >= totalPages) {
+                        throw new Error(`Invalid page number: ${p + 1}`);
+                    }
+                });
+
+                const newPdf = await PDFDocument.create();
+
+                const pages = await newPdf.copyPages(pdfDoc, orderArray);
+                pages.forEach(page => newPdf.addPage(page));
+
+                const reorderedBytes = await newPdf.save();
+
+                const outputPath = path.join(outputDir, "reordered.pdf");
+                fs.writeFileSync(outputPath, reorderedBytes);
+
+                console.log("✅ PDF Reordered Successfully");
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ PDF Reorder FAILED:", err);
+                throw err;
+            }
+        }
+
+        // ---------------- PDF DELETE PAGES ----------------
+        if (conversionType === "pdf->delete") {
+            console.log("🗑 PDF Delete Pages started");
+
+            try {
+                if (!files || files.length === 0) {
+                    throw new Error("No PDF file provided");
+                }
+
+                const inputPdf = files[0].path;
+                const { pages } = job.data;
+
+                if (!pages || pages.trim() === "") {
+                    throw new Error("Pages parameter required (e.g. 2,5,7)");
+                }
+
+                // Ensure outputDir exists
+                const outputDir = path.join("uploads", "tmp", jobId);
+
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                // Convert pages string → zero-based indices
+                const removePages = pages.split(",")
+                    .map(n => n.trim())
+                    .filter(n => n !== "")
+                    .map(n => {
+                        const pageNum = parseInt(n, 10);
+
+                        if (isNaN(pageNum)) {
+                            throw new Error(`Invalid page value: "${n}"`);
+                        }
+
+                        return pageNum - 1;
+                    });
+
+                const pdfBytes = fs.readFileSync(inputPdf);
+                const pdfDoc = await PDFDocument.load(pdfBytes);
+
+                const totalPages = pdfDoc.getPageCount();
+
+                // Validate page numbers
+                removePages.forEach(p => {
+                    if (p < 0 || p >= totalPages) {
+                        throw new Error(`Invalid page number: ${p + 1}`);
+                    }
+                });
+
+                // Remove duplicates (important)
+                const removeSet = new Set(removePages);
+
+                const keepPages = [];
+                for (let i = 0; i < totalPages; i++) {
+                    if (!removeSet.has(i)) {
+                        keepPages.push(i);
+                    }
+                }
+
+                if (keepPages.length === 0) {
+                    throw new Error("Cannot delete all pages");
+                }
+
+                const newPdf = await PDFDocument.create();
+
+                const copiedPages = await newPdf.copyPages(pdfDoc, keepPages);
+                copiedPages.forEach(page => newPdf.addPage(page));
+
+                const outputBytes = await newPdf.save();
+
+                const outputPath = path.join(outputDir, "pages-deleted.pdf");
+                fs.writeFileSync(outputPath, outputBytes);
+
+                console.log("✅ Pages deleted successfully");
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ PDF Delete FAILED:", err);
+                throw err;
+            }
+        }
+        if (conversionType === "image->txt") {
+            console.log("🔍 OCR Image → TXT started");
+
+            try {
+                const { language } = job.data;
+                const lang = language || "eng";
+
+                const outputDir = path.join("uploads", "tmp", jobId);
+                fs.mkdirSync(outputDir, { recursive: true });
+
+                let finalText = "";
+
+                for (const file of files) {
+                    console.log(`🔍 OCR: ${file.originalname} (${lang})`);
+
+                    const text = await extractTextFromImage(file.path, lang);
+
+                    finalText += `\n--- ${file.originalname} ---\n`;
+                    finalText += text;
+                }
+
+                const outputPath = path.join(outputDir, "ocr.txt");
+                fs.writeFileSync(outputPath, finalText);
+
+                console.log(`✅ OCR extraction done (${lang})`);
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ Image → TXT FAILED:", err);
+                throw err;
+            }
+        }
+
+        if (conversionType === "pdf->ocr") {
+            console.log("🔍 OCR PDF → TXT started");
+
+            try {
+                const { language } = job.data;
+                const lang = language || "eng";
+
+                const poppler = new Poppler();
+                const outputDir = path.join("uploads", "tmp", jobId);
+                const imagesDir = path.join(outputDir, "ocr-pages");
+
+                fs.mkdirSync(imagesDir, { recursive: true });
+
+                const pdfPath = files[0].path;
+
+                // ✅ SAFE Poppler conversion (version-proof)
+                await poppler.pdfToCairo(
+                    pdfPath,
+                    path.join(imagesDir, "page"),
+                    {
+                        pngFile: true
+                    }
+                );
+
+                const images = fs.readdirSync(imagesDir).sort();
+
+                let finalText = "";
+
+                for (const img of images) {
+                    const imgPath = path.join(imagesDir, img);
+
+                    console.log(`🔍 OCR: ${img} (${lang})`);
+
+                    // ✅ OCR with DPI boost
+                    const text = await extractTextFromImage(imgPath, lang);
+
+                    finalText += `\n--- ${img} ---\n`;
+                    finalText += text;
+                }
+
+                const outputPath = path.join(outputDir, "ocr.txt");
+                fs.writeFileSync(outputPath, finalText);
+
+                console.log(`✅ OCR PDF done (${lang})`);
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ PDF → OCR FAILED:", err);
+                throw err;
+            }
+        }
+
+// ---------------- IMAGE → SEARCHABLE PDF ----------------
+if (conversionType === "image->searchable-pdf") {
+
+    console.log("🔍 Image → Searchable PDF started");
+
+    try {
+        const { language } = job.data;
+        const lang = language || "eng";
+
+        const outputDir = path.join("uploads", "tmp", jobId);
+        fs.mkdirSync(outputDir, { recursive: true });
+
+        const pdfPaths = [];
+
+        for (let i = 0; i < files.length; i++) {
+
+            const file = files[i];
+
+            if (!file.mimetype.startsWith("image/")) {
+                throw new Error(`❌ Only images allowed: ${file.originalname}`);
+            }
+
+            const processedImg = path.join(outputDir, `processed-${i}.png`);
+            const outputBase = path.join(outputDir, `page-${i + 1}`);
+
+            console.log(`🖼 Preprocessing: ${file.originalname}`);
+
+            // ✅ SAFE Preprocessing (A4 @ 300 DPI)
+            await new Promise((resolve) => {
+                exec(
+                    `convert "${file.path}" `
+                    + `-density 300 `
+                    + `-units PixelsPerInch `
+                    + `-resize 2480x3508 `
+                    + `-colorspace Gray `
+                    + `-normalize `
+                    + `-contrast-stretch 0 `
+                    + `-sharpen 0x1 `
+                    + `-deskew 40% `
+                    + `"${processedImg}"`,
+                    (error, stdout, stderr) => {
+
+                        if (error) {
+                            console.warn("⚠️ Convert failed → using original image");
+                            console.warn(stderr);
+                        }
+
+                        resolve(); // Always resolve (fallback safe)
+                    }
+                );
             });
 
-        const pdfBytes = fs.readFileSync(inputPdf);
-        const pdfDoc = await PDFDocument.load(pdfBytes);
+            const inputForOCR = fs.existsSync(processedImg)
+                ? processedImg
+                : file.path;
 
-        const totalPages = pdfDoc.getPageCount();
+            console.log(`🔍 OCR: ${file.originalname}`);
 
-        // Validate pages
-        orderArray.forEach(p => {
-            if (p < 0 || p >= totalPages) {
-                throw new Error(`Invalid page number: ${p + 1}`);
+            // ✅ FIXED Tesseract (normal PDF size + selectable text)
+            await new Promise((resolve, reject) => {
+                exec(
+                    `tesseract "${inputForOCR}" "${outputBase}" `
+                    + `-l ${lang} `
+                    + `--oem 1 `
+                    + `--psm 6 `
+                    + `--dpi 300 `
+                    + `-c preserve_interword_spaces=1 `
+                    + `pdf`,
+                    (error, stdout, stderr) => {
+
+                        if (error) {
+                            console.error("❌ Tesseract failed:");
+                            console.error(stderr);
+                            reject(error);
+                        } else {
+                            resolve();
+                        }
+                    }
+                );
+            });
+
+            pdfPaths.push(`${outputBase}.pdf`);
+        }
+
+        let finalOutputPath;
+
+        // ✅ SINGLE PAGE
+        if (pdfPaths.length === 1) {
+
+            finalOutputPath = path.join(outputDir, "searchable.pdf");
+            fs.renameSync(pdfPaths[0], finalOutputPath);
+
+        } else {
+
+            console.log("📄 Merging OCR pages...");
+
+            const mergedPdf = await PDFDocument.create();
+
+            for (const pdfPath of pdfPaths) {
+
+                const pdfBytes = fs.readFileSync(pdfPath);
+                const pdf = await PDFDocument.load(pdfBytes);
+
+                const copiedPages = await mergedPdf.copyPages(
+                    pdf,
+                    pdf.getPageIndices()
+                );
+
+                copiedPages.forEach(p => mergedPdf.addPage(p));
+                fs.unlinkSync(pdfPath);
             }
-        });
 
-        const newPdf = await PDFDocument.create();
+            const mergedBytes = await mergedPdf.save();
 
-        const pages = await newPdf.copyPages(pdfDoc, orderArray);
-        pages.forEach(page => newPdf.addPage(page));
+            finalOutputPath = path.join(outputDir, "searchable.pdf");
+            fs.writeFileSync(finalOutputPath, mergedBytes);
+        }
 
-        const reorderedBytes = await newPdf.save();
+        console.log(`✅ Searchable PDF created (${lang})`);
 
-        const outputPath = path.join(outputDir, "reordered.pdf");
-        fs.writeFileSync(outputPath, reorderedBytes);
-
-        console.log("✅ PDF Reordered Successfully");
-
-        return { success: true, outputPath };
+        return { success: true, outputPath: finalOutputPath };
 
     } catch (err) {
-        console.error("❌ PDF Reorder FAILED:", err);
+
+        console.error("❌ Image → Searchable PDF FAILED:", err);
         throw err;
     }
 }
 
-// ---------------- PDF DELETE PAGES ----------------
-if (conversionType === "pdf->delete") {
-    console.log("🗑 PDF Delete Pages started");
+// ---------------- PDF → SEARCHABLE PDF ----------------
+if (conversionType === "pdf->searchable-pdf") {
+    console.log("🔍 PDF → Searchable PDF started");
 
     try {
-        if (!files || files.length === 0) {
-            throw new Error("No PDF file provided");
-        }
+        const { language } = job.data;
+        const lang = language || "eng";
 
-        const inputPdf = files[0].path;
-        const { pages } = job.data;
-
-        if (!pages || pages.trim() === "") {
-            throw new Error("Pages parameter required (e.g. 2,5,7)");
-        }
-
-        // Ensure outputDir exists
+        const pdfFile = files[0];
         const outputDir = path.join("uploads", "tmp", jobId);
+        const imagesDir = path.join(outputDir, "images");
 
-        if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-        }
+        fs.mkdirSync(imagesDir, { recursive: true });
 
-        // Convert pages string → zero-based indices
-        const removePages = pages.split(",")
-            .map(n => n.trim())
-            .filter(n => n !== "")
-            .map(n => {
-                const pageNum = parseInt(n, 10);
+        const poppler = new Poppler();
 
-                if (isNaN(pageNum)) {
-                    throw new Error(`Invalid page value: "${n}"`);
-                }
+        // ✅ Convert PDF → Images (safe options)
+        await poppler.pdfToCairo(
+            pdfFile.path,
+            path.join(imagesDir, "page"),
+            { pngFile: true }
+        );
 
-                return pageNum - 1;
+        const imageFiles = fs.readdirSync(imagesDir).sort();
+        const pdfPaths = [];
+
+        for (const imgFile of imageFiles) {
+            const imgPath = path.join(imagesDir, imgFile);
+            const processedImg = path.join(imagesDir, `processed-${imgFile}`);
+
+            // ✅ Enhanced preprocessing
+            await new Promise(resolve => {
+                exec(
+                    `convert "${imgPath}" \
+                        -density 300 \
+                        -units PixelsPerInch \
+                        -colorspace Gray \
+                        -normalize \
+                        -contrast-stretch 0 \
+                        -sharpen 0x1 \
+                        -deskew 40% \
+                        "${processedImg}"`,
+                    () => resolve()
+                );
             });
 
-        const pdfBytes = fs.readFileSync(inputPdf);
-        const pdfDoc = await PDFDocument.load(pdfBytes);
+            const inputForOCR = fs.existsSync(processedImg)
+                ? processedImg
+                : imgPath;
 
-        const totalPages = pdfDoc.getPageCount();
+            const outputBase = path.join(outputDir, `ocr-${imgFile}`);
 
-        // Validate page numbers
-        removePages.forEach(p => {
-            if (p < 0 || p >= totalPages) {
-                throw new Error(`Invalid page number: ${p + 1}`);
-            }
-        });
+            console.log(`🔍 OCR: ${imgFile}`);
 
-        // Remove duplicates (important)
-        const removeSet = new Set(removePages);
+            // ✅ Improved Tesseract OCR
+            await new Promise((resolve, reject) => {
+                exec(
+                    `tesseract "${inputForOCR}" "${outputBase}" \
+                        -l ${lang} \
+                        --oem 1 \
+                        --psm 6 \
+                        -c preserve_interword_spaces=1 \
+                        pdf`,
+                    (error, stdout, stderr) => {
+                        if (error) {
+                            console.error(stderr);
+                            reject(error);
+                        } else resolve();
+                    }
+                );
+            });
 
-        const keepPages = [];
-        for (let i = 0; i < totalPages; i++) {
-            if (!removeSet.has(i)) {
-                keepPages.push(i);
-            }
+            pdfPaths.push(`${outputBase}.pdf`);
         }
 
-        if (keepPages.length === 0) {
-            throw new Error("Cannot delete all pages");
+        const mergedPdf = await PDFDocument.create();
+
+        for (const pdfPath of pdfPaths) {
+            const pdfBytes = fs.readFileSync(pdfPath);
+            const pdf = await PDFDocument.load(pdfBytes);
+
+            const copiedPages = await mergedPdf.copyPages(
+                pdf,
+                pdf.getPageIndices()
+            );
+
+            copiedPages.forEach(p => mergedPdf.addPage(p));
+            fs.unlinkSync(pdfPath);
         }
 
-        const newPdf = await PDFDocument.create();
+        const mergedBytes = await mergedPdf.save();
+        const finalOutputPath = path.join(outputDir, "searchable.pdf");
 
-        const copiedPages = await newPdf.copyPages(pdfDoc, keepPages);
-        copiedPages.forEach(page => newPdf.addPage(page));
+        fs.writeFileSync(finalOutputPath, mergedBytes);
 
-        const outputBytes = await newPdf.save();
+        console.log(`✅ Searchable PDF created (${lang})`);
 
-        const outputPath = path.join(outputDir, "pages-deleted.pdf");
-        fs.writeFileSync(outputPath, outputBytes);
-
-        console.log("✅ Pages deleted successfully");
-
-        return { success: true, outputPath };
+        return { success: true, outputPath: finalOutputPath };
 
     } catch (err) {
-        console.error("❌ PDF Delete FAILED:", err);
+        console.error("❌ PDF → Searchable PDF FAILED:", err);
         throw err;
     }
-}
-if (conversionType === "image->txt") {
-  console.log("🔍 OCR Image → TXT started");
-
-  let finalText = "";
-
-  for (const file of files) {
-    const text = await extractTextFromImage(file.path);
-    finalText += `\n--- ${file.originalname} ---\n`;
-    finalText += text;
-  }
-
-  const outputPath = path.join("uploads", "tmp", jobId, "ocr.txt");
-  fs.writeFileSync(outputPath, finalText);
-
-  console.log("✅ OCR extraction done");
-
-  return { success: true, outputPath };
-}
-if (conversionType === "pdf->ocr") {
-  console.log("🔍 OCR PDF started");
-
-  const poppler = new Poppler();
-  const outputDir = path.join("uploads", "tmp", jobId, "ocr-pages");
-
-  fs.mkdirSync(outputDir, { recursive: true });
-
-  const pdfPath = files[0].path;
-
-  await poppler.pdfToCairo(pdfPath, path.join(outputDir, "page"), {
-    pngFile: true,
-  });
-
-  const images = fs.readdirSync(outputDir);
-
-  let finalText = "";
-
-  for (const img of images) {
-    const imgPath = path.join(outputDir, img);
-    const text = await extractTextFromImage(imgPath);
-    finalText += `\n--- ${img} ---\n`;
-    finalText += text;
-  }
-
-  const outputPath = path.join("uploads", "tmp", jobId, "ocr.txt");
-  fs.writeFileSync(outputPath, finalText);
-
-  console.log("✅ OCR PDF done");
-
-  return { success: true, outputPath };
 }
 
 
