@@ -26,7 +26,7 @@ router.get("/:jobId/zip", async (req, res) => {
       });
     }
 
-    res.download(zipPath, `${jobId}-results.zip`);
+    res.download(zipPath, `${conversionType}-results.zip`);
   } catch (err) {
     console.error("❌ ZIP error:", err.message);
 
