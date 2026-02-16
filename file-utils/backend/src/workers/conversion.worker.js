@@ -1,6 +1,6 @@
 import { Worker } from "bullmq";
 import { redisConnection } from "../config/redis.js";
-import fs from "fs";
+import fs from "../utils/fsSafe.js";
 import path from "path";
 import { Poppler } from "node-poppler";
 import { PDFDocument, degrees } from "pdf-lib";
@@ -81,7 +81,7 @@ const worker = new Worker(
 
             const pdfBytes = await pdfDoc.save();
 
-            const outputDir = path.join("uploads", "tmp", jobId);
+            const outputDir = path.join("uploads", "tmp", jobId, "output");
             if (!fs.existsSync(outputDir)) {
                 fs.mkdirSync(outputDir, { recursive: true });
             }
@@ -114,7 +114,7 @@ const worker = new Worker(
 
             const mergedBytes = await mergedPdf.save();
 
-            const outputDir = path.join("uploads", "tmp", jobId);
+            const outputDir = path.join("uploads", "tmp", jobId, "output");
 
             //  CRITICAL SAFETY FIX
             if (!fs.existsSync(outputDir)) {
@@ -140,7 +140,7 @@ const worker = new Worker(
                 const totalPages = srcPdf.getPageCount();
                 console.log(`📄 Total pages: ${totalPages}`);
 
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -191,7 +191,7 @@ const worker = new Worker(
 
                 const pdfBytes = await pdfDoc.save();
 
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -217,7 +217,8 @@ const worker = new Worker(
             try {
                 const pdfFile = files[0];
 
-                const outputDir = path.join("uploads", "tmp", jobId, "images");
+                const outputDir = path.join("uploads", "tmp", jobId, "output", "images");
+
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -278,7 +279,7 @@ const worker = new Worker(
 
                 const buffer = await Packer.toBuffer(doc);
 
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -319,7 +320,7 @@ const worker = new Worker(
                     });
                 }
 
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -346,7 +347,7 @@ const worker = new Worker(
                 const poppler = new Poppler();
                 const inputPdf = files[0].path;
 
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -375,7 +376,7 @@ const worker = new Worker(
                 const pdfFile = files[0];
                 const poppler = new Poppler();
 
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
                 }
@@ -582,7 +583,7 @@ const worker = new Worker(
 
                 const buffer = await Packer.toBuffer(doc);
 
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
                 }
@@ -607,7 +608,7 @@ const worker = new Worker(
 
             try {
                 const inputPdf = files[0].path;
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -693,7 +694,7 @@ const worker = new Worker(
             try {
                 const inputPdf = files[0].path;
                 const { watermarkText } = job.data;
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -758,7 +759,7 @@ const worker = new Worker(
                     throw new Error("❌ Password is required for protection");
                 }
 
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -804,7 +805,7 @@ const worker = new Worker(
                     throw new Error("❌ Password required to unlock PDF");
                 }
 
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -853,7 +854,7 @@ const worker = new Worker(
                     throw new Error("❌ Invalid rotation angle. Use 90, 180, or 270");
                 }
 
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -902,7 +903,7 @@ const worker = new Worker(
                 }
 
                 // Ensure outputDir exists (same as rotate)
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -971,7 +972,7 @@ const worker = new Worker(
                 }
 
                 // Ensure outputDir exists
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
 
                 if (!fs.existsSync(outputDir)) {
                     fs.mkdirSync(outputDir, { recursive: true });
@@ -1043,7 +1044,7 @@ const worker = new Worker(
                 const { language } = job.data;
                 const lang = language || "eng";
 
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
                 fs.mkdirSync(outputDir, { recursive: true });
 
                 let finalText = "";
@@ -1078,7 +1079,7 @@ const worker = new Worker(
                 const lang = language || "eng";
 
                 const poppler = new Poppler();
-                const outputDir = path.join("uploads", "tmp", jobId);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
                 const imagesDir = path.join(outputDir, "ocr-pages");
 
                 fs.mkdirSync(imagesDir, { recursive: true });
@@ -1132,7 +1133,7 @@ if (conversionType === "image->searchable-pdf") {
         const { language } = job.data;
         const lang = language || "eng";
 
-        const outputDir = path.join("uploads", "tmp", jobId);
+        const outputDir = path.join("uploads", "tmp", jobId, "output");
         fs.mkdirSync(outputDir, { recursive: true });
 
         const pdfPaths = [];
@@ -1261,7 +1262,7 @@ if (conversionType === "pdf->searchable-pdf") {
         const lang = language || "eng";
 
         const pdfFile = files[0];
-        const outputDir = path.join("uploads", "tmp", jobId);
+        const outputDir = path.join("uploads", "tmp", jobId, "output");
         const imagesDir = path.join(outputDir, "images");
 
         fs.mkdirSync(imagesDir, { recursive: true });
