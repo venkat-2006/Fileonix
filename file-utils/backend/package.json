@@ -6,6 +6,7 @@
     "dev": "nodemon src/server.js"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
     "bullmq": "^5.69.1",
     "cors": "^2.8.5",
     "docx": "^9.5.2",
