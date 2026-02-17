@@ -1357,128 +1357,188 @@ const worker = new Worker(
                 throw err;
             }
         }
-// ---------------- PDF REPAIR ----------------
-if (conversionType === "pdf->repair") {
+        // ---------------- PDF REPAIR ----------------
+        if (conversionType === "pdf->repair") {
 
-    console.log("🛠 PDF Repair started");
+            console.log("🛠 PDF Repair started");
+
+            try {
+                const inputPdf = files[0].path;
+
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+
+                const outputPath = path.join(outputDir, "repaired.pdf");
+
+                await new Promise((resolve, reject) => {
+
+                    // ✅ Stage 1 — qpdf linearize (auto repair)
+                    exec(
+                        `qpdf --linearize "${inputPdf}" "${outputPath}"`,
+                        (error, stdout, stderr) => {
+
+                            console.log("qpdf stdout:", stdout);
+                            console.log("qpdf stderr:", stderr);
+
+                            if (error || !fs.existsSync(outputPath)) {
+                                console.warn("⚠️ qpdf failed → trying Ghostscript");
+                                return ghostscriptFallback();
+                            }
+
+                            validateWithQpdf();
+                        }
+                    );
+
+                    // ✅ Validate qpdf output
+                    function validateWithQpdf() {
+                        exec(
+                            `qpdf --check "${outputPath}"`,
+                            (checkError, checkStdout, checkStderr) => {
+
+                                console.log("qpdf check stdout:", checkStdout);
+                                console.log("qpdf check stderr:", checkStderr);
+
+                                if (checkError) {
+                                    console.warn("❌ qpdf output invalid → trying Ghostscript");
+                                    return ghostscriptFallback();
+                                }
+
+                                validatePages();
+                            }
+                        );
+                    }
+
+                    // ✅ Stage 2 — Ghostscript fallback
+                    function ghostscriptFallback() {
+                        exec(
+                            `gs -o "${outputPath}" -sDEVICE=pdfwrite "${inputPdf}"`,
+                            (gsError, gsStdout, gsStderr) => {
+
+                                console.log("gs stdout:", gsStdout);
+                                console.log("gs stderr:", gsStderr);
+
+                                if (gsError || !fs.existsSync(outputPath)) {
+                                    console.warn("⚠️ Ghostscript failed → fallback copy");
+                                    fs.copyFileSync(inputPdf, outputPath);
+                                    return validatePages();
+                                }
+
+                                console.log("✅ Ghostscript repair successful");
+                                validatePages();
+                            }
+                        );
+                    }
+
+                    // ✅ FINAL VALIDATION — Check page count
+                    function validatePages() {
+                        exec(
+                            `pdfinfo "${outputPath}"`,
+                            (infoError, infoStdout, infoStderr) => {
+
+                                console.log("pdfinfo stdout:", infoStdout);
+                                console.log("pdfinfo stderr:", infoStderr);
+
+                                const match = infoStdout.match(/Pages:\s+(\d+)/);
+
+                                if (!match) {
+                                    console.error("❌ Could not determine page count");
+                                    return reject(new Error("Invalid repaired PDF"));
+                                }
+
+                                const pages = parseInt(match[1]);
+
+                                if (pages === 0) {
+                                    console.error("❌ Repaired PDF has ZERO pages");
+                                    return reject(new Error("PDF too corrupted — content unrecoverable"));
+                                }
+
+                                console.log(`✅ Repaired PDF valid with ${pages} pages`);
+                                resolve();
+                            }
+                        );
+                    }
+                });
+
+                const stats = fs.statSync(outputPath);
+                console.log("📊 Final repaired PDF size:", stats.size);
+
+                if (stats.size < 1000) {
+                    throw new Error("❌ Repaired PDF too small");
+                }
+
+                console.log("✅ PDF Repair completed");
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ PDF Repair FAILED:", err);
+                throw err;
+            }
+        }
+
+        // ---------------- PDF → GRAYSCALE ----------------
+if (conversionType === "pdf->grayscale") {
+
+    console.log("⚫ PDF → Grayscale started");
 
     try {
         const inputPdf = files[0].path;
 
+        // ✅ CONSISTENT OUTPUT DIRECTORY
         const outputDir = path.join("uploads", "tmp", jobId, "output");
+
         if (!fs.existsSync(outputDir)) {
             fs.mkdirSync(outputDir, { recursive: true });
         }
 
-        const outputPath = path.join(outputDir, "repaired.pdf");
+        const outputPath = path.join(outputDir, "grayscale.pdf");
 
+        // ✅ Ghostscript grayscale conversion
         await new Promise((resolve, reject) => {
-
-            // ✅ Stage 1 — qpdf linearize (auto repair)
             exec(
-                `qpdf --linearize "${inputPdf}" "${outputPath}"`,
+                `gs -sDEVICE=pdfwrite -dNOPAUSE -dBATCH -dQUIET `
+                + `-sColorConversionStrategy=Gray `
+                + `-dProcessColorModel=/DeviceGray `
+                + `-dCompatibilityLevel=1.4 `
+                + `-sOutputFile="${outputPath}" `
+                + `"${inputPdf}"`,
                 (error, stdout, stderr) => {
 
-                    console.log("qpdf stdout:", stdout);
-                    console.log("qpdf stderr:", stderr);
+                    console.log("gs stdout:", stdout);
+                    console.log("gs stderr:", stderr);
 
-                    if (error || !fs.existsSync(outputPath)) {
-                        console.warn("⚠️ qpdf failed → trying Ghostscript");
-                        return ghostscriptFallback();
-                    }
-
-                    validateWithQpdf();
-                }
-            );
-
-            // ✅ Validate qpdf output
-            function validateWithQpdf() {
-                exec(
-                    `qpdf --check "${outputPath}"`,
-                    (checkError, checkStdout, checkStderr) => {
-
-                        console.log("qpdf check stdout:", checkStdout);
-                        console.log("qpdf check stderr:", checkStderr);
-
-                        if (checkError) {
-                            console.warn("❌ qpdf output invalid → trying Ghostscript");
-                            return ghostscriptFallback();
-                        }
-
-                        validatePages();
-                    }
-                );
-            }
-
-            // ✅ Stage 2 — Ghostscript fallback
-            function ghostscriptFallback() {
-                exec(
-                    `gs -o "${outputPath}" -sDEVICE=pdfwrite "${inputPdf}"`,
-                    (gsError, gsStdout, gsStderr) => {
-
-                        console.log("gs stdout:", gsStdout);
-                        console.log("gs stderr:", gsStderr);
-
-                        if (gsError || !fs.existsSync(outputPath)) {
-                            console.warn("⚠️ Ghostscript failed → fallback copy");
-                            fs.copyFileSync(inputPdf, outputPath);
-                            return validatePages();
-                        }
-
-                        console.log("✅ Ghostscript repair successful");
-                        validatePages();
-                    }
-                );
-            }
-
-            // ✅ FINAL VALIDATION — Check page count
-            function validatePages() {
-                exec(
-                    `pdfinfo "${outputPath}"`,
-                    (infoError, infoStdout, infoStderr) => {
-
-                        console.log("pdfinfo stdout:", infoStdout);
-                        console.log("pdfinfo stderr:", infoStderr);
-
-                        const match = infoStdout.match(/Pages:\s+(\d+)/);
-
-                        if (!match) {
-                            console.error("❌ Could not determine page count");
-                            return reject(new Error("Invalid repaired PDF"));
-                        }
-
-                        const pages = parseInt(match[1]);
-
-                        if (pages === 0) {
-                            console.error("❌ Repaired PDF has ZERO pages");
-                            return reject(new Error("PDF too corrupted — content unrecoverable"));
-                        }
-
-                        console.log(`✅ Repaired PDF valid with ${pages} pages`);
+                    if (error) {
+                        console.error("❌ Grayscale failed");
+                        reject(error);
+                    } else {
                         resolve();
                     }
-                );
-            }
+                }
+            );
         });
 
+        // ✅ VERIFY OUTPUT
         const stats = fs.statSync(outputPath);
-        console.log("📊 Final repaired PDF size:", stats.size);
+        console.log("📊 Grayscale PDF size:", stats.size);
 
         if (stats.size < 1000) {
-            throw new Error("❌ Repaired PDF too small");
+            throw new Error("❌ Grayscale PDF too small / empty");
         }
 
-        console.log("✅ PDF Repair completed");
+        console.log("✅ PDF converted to Grayscale");
 
         return { success: true, outputPath };
 
     } catch (err) {
-        console.error("❌ PDF Repair FAILED:", err);
+        console.error("❌ PDF → Grayscale FAILED:", err);
         throw err;
     }
 }
 
-  console.log("❌ Unsupported conversion");
+
+        console.log("❌ Unsupported conversion");
         return { success: false };
     },
     { connection: redisConnection }
