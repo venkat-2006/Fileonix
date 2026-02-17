@@ -1124,169 +1124,169 @@ const worker = new Worker(
             }
         }
 
-// ---------------- IMAGE → SEARCHABLE PDF ----------------
-if (conversionType === "image->searchable-pdf") {
+        // ---------------- IMAGE → SEARCHABLE PDF ----------------
+        if (conversionType === "image->searchable-pdf") {
 
-    console.log("🔍 Image → Searchable PDF started");
+            console.log("🔍 Image → Searchable PDF started");
 
-    try {
-        const { language } = job.data;
-        const lang = language || "eng";
+            try {
+                const { language } = job.data;
+                const lang = language || "eng";
 
-        const outputDir = path.join("uploads", "tmp", jobId, "output");
-        fs.mkdirSync(outputDir, { recursive: true });
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
+                fs.mkdirSync(outputDir, { recursive: true });
 
-        const pdfPaths = [];
+                const pdfPaths = [];
 
-        for (let i = 0; i < files.length; i++) {
+                for (let i = 0; i < files.length; i++) {
 
-            const file = files[i];
+                    const file = files[i];
 
-            if (!file.mimetype.startsWith("image/")) {
-                throw new Error(`❌ Only images allowed: ${file.originalname}`);
+                    if (!file.mimetype.startsWith("image/")) {
+                        throw new Error(`❌ Only images allowed: ${file.originalname}`);
+                    }
+
+                    const processedImg = path.join(outputDir, `processed-${i}.png`);
+                    const outputBase = path.join(outputDir, `page-${i + 1}`);
+
+                    console.log(`🖼 Preprocessing: ${file.originalname}`);
+
+                    // ✅ SAFE Preprocessing (A4 @ 300 DPI)
+                    await new Promise((resolve) => {
+                        exec(
+                            `convert "${file.path}" `
+                            + `-density 300 `
+                            + `-units PixelsPerInch `
+                            + `-resize 2480x3508 `
+                            + `-colorspace Gray `
+                            + `-normalize `
+                            + `-contrast-stretch 0 `
+                            + `-sharpen 0x1 `
+                            + `-deskew 40% `
+                            + `"${processedImg}"`,
+                            (error, stdout, stderr) => {
+
+                                if (error) {
+                                    console.warn("⚠️ Convert failed → using original image");
+                                    console.warn(stderr);
+                                }
+
+                                resolve(); // Always resolve (fallback safe)
+                            }
+                        );
+                    });
+
+                    const inputForOCR = fs.existsSync(processedImg)
+                        ? processedImg
+                        : file.path;
+
+                    console.log(`🔍 OCR: ${file.originalname}`);
+
+                    // ✅ FIXED Tesseract (normal PDF size + selectable text)
+                    await new Promise((resolve, reject) => {
+                        exec(
+                            `tesseract "${inputForOCR}" "${outputBase}" `
+                            + `-l ${lang} `
+                            + `--oem 1 `
+                            + `--psm 6 `
+                            + `--dpi 300 `
+                            + `-c preserve_interword_spaces=1 `
+                            + `pdf`,
+                            (error, stdout, stderr) => {
+
+                                if (error) {
+                                    console.error("❌ Tesseract failed:");
+                                    console.error(stderr);
+                                    reject(error);
+                                } else {
+                                    resolve();
+                                }
+                            }
+                        );
+                    });
+
+                    pdfPaths.push(`${outputBase}.pdf`);
+                }
+
+                let finalOutputPath;
+
+                // ✅ SINGLE PAGE
+                if (pdfPaths.length === 1) {
+
+                    finalOutputPath = path.join(outputDir, "searchable.pdf");
+                    fs.renameSync(pdfPaths[0], finalOutputPath);
+
+                } else {
+
+                    console.log("📄 Merging OCR pages...");
+
+                    const mergedPdf = await PDFDocument.create();
+
+                    for (const pdfPath of pdfPaths) {
+
+                        const pdfBytes = fs.readFileSync(pdfPath);
+                        const pdf = await PDFDocument.load(pdfBytes);
+
+                        const copiedPages = await mergedPdf.copyPages(
+                            pdf,
+                            pdf.getPageIndices()
+                        );
+
+                        copiedPages.forEach(p => mergedPdf.addPage(p));
+                        fs.unlinkSync(pdfPath);
+                    }
+
+                    const mergedBytes = await mergedPdf.save();
+
+                    finalOutputPath = path.join(outputDir, "searchable.pdf");
+                    fs.writeFileSync(finalOutputPath, mergedBytes);
+                }
+
+                console.log(`✅ Searchable PDF created (${lang})`);
+
+                return { success: true, outputPath: finalOutputPath };
+
+            } catch (err) {
+
+                console.error("❌ Image → Searchable PDF FAILED:", err);
+                throw err;
             }
-
-            const processedImg = path.join(outputDir, `processed-${i}.png`);
-            const outputBase = path.join(outputDir, `page-${i + 1}`);
-
-            console.log(`🖼 Preprocessing: ${file.originalname}`);
-
-            // ✅ SAFE Preprocessing (A4 @ 300 DPI)
-            await new Promise((resolve) => {
-                exec(
-                    `convert "${file.path}" `
-                    + `-density 300 `
-                    + `-units PixelsPerInch `
-                    + `-resize 2480x3508 `
-                    + `-colorspace Gray `
-                    + `-normalize `
-                    + `-contrast-stretch 0 `
-                    + `-sharpen 0x1 `
-                    + `-deskew 40% `
-                    + `"${processedImg}"`,
-                    (error, stdout, stderr) => {
-
-                        if (error) {
-                            console.warn("⚠️ Convert failed → using original image");
-                            console.warn(stderr);
-                        }
-
-                        resolve(); // Always resolve (fallback safe)
-                    }
-                );
-            });
-
-            const inputForOCR = fs.existsSync(processedImg)
-                ? processedImg
-                : file.path;
-
-            console.log(`🔍 OCR: ${file.originalname}`);
-
-            // ✅ FIXED Tesseract (normal PDF size + selectable text)
-            await new Promise((resolve, reject) => {
-                exec(
-                    `tesseract "${inputForOCR}" "${outputBase}" `
-                    + `-l ${lang} `
-                    + `--oem 1 `
-                    + `--psm 6 `
-                    + `--dpi 300 `
-                    + `-c preserve_interword_spaces=1 `
-                    + `pdf`,
-                    (error, stdout, stderr) => {
-
-                        if (error) {
-                            console.error("❌ Tesseract failed:");
-                            console.error(stderr);
-                            reject(error);
-                        } else {
-                            resolve();
-                        }
-                    }
-                );
-            });
-
-            pdfPaths.push(`${outputBase}.pdf`);
         }
 
-        let finalOutputPath;
+        // ---------------- PDF → SEARCHABLE PDF ----------------
+        if (conversionType === "pdf->searchable-pdf") {
+            console.log("🔍 PDF → Searchable PDF started");
 
-        // ✅ SINGLE PAGE
-        if (pdfPaths.length === 1) {
+            try {
+                const { language } = job.data;
+                const lang = language || "eng";
 
-            finalOutputPath = path.join(outputDir, "searchable.pdf");
-            fs.renameSync(pdfPaths[0], finalOutputPath);
+                const pdfFile = files[0];
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
+                const imagesDir = path.join(outputDir, "images");
 
-        } else {
+                fs.mkdirSync(imagesDir, { recursive: true });
 
-            console.log("📄 Merging OCR pages...");
+                const poppler = new Poppler();
 
-            const mergedPdf = await PDFDocument.create();
-
-            for (const pdfPath of pdfPaths) {
-
-                const pdfBytes = fs.readFileSync(pdfPath);
-                const pdf = await PDFDocument.load(pdfBytes);
-
-                const copiedPages = await mergedPdf.copyPages(
-                    pdf,
-                    pdf.getPageIndices()
+                // ✅ Convert PDF → Images (safe options)
+                await poppler.pdfToCairo(
+                    pdfFile.path,
+                    path.join(imagesDir, "page"),
+                    { pngFile: true }
                 );
 
-                copiedPages.forEach(p => mergedPdf.addPage(p));
-                fs.unlinkSync(pdfPath);
-            }
+                const imageFiles = fs.readdirSync(imagesDir).sort();
+                const pdfPaths = [];
 
-            const mergedBytes = await mergedPdf.save();
+                for (const imgFile of imageFiles) {
+                    const imgPath = path.join(imagesDir, imgFile);
+                    const processedImg = path.join(imagesDir, `processed-${imgFile}`);
 
-            finalOutputPath = path.join(outputDir, "searchable.pdf");
-            fs.writeFileSync(finalOutputPath, mergedBytes);
-        }
-
-        console.log(`✅ Searchable PDF created (${lang})`);
-
-        return { success: true, outputPath: finalOutputPath };
-
-    } catch (err) {
-
-        console.error("❌ Image → Searchable PDF FAILED:", err);
-        throw err;
-    }
-}
-
-// ---------------- PDF → SEARCHABLE PDF ----------------
-if (conversionType === "pdf->searchable-pdf") {
-    console.log("🔍 PDF → Searchable PDF started");
-
-    try {
-        const { language } = job.data;
-        const lang = language || "eng";
-
-        const pdfFile = files[0];
-        const outputDir = path.join("uploads", "tmp", jobId, "output");
-        const imagesDir = path.join(outputDir, "images");
-
-        fs.mkdirSync(imagesDir, { recursive: true });
-
-        const poppler = new Poppler();
-
-        // ✅ Convert PDF → Images (safe options)
-        await poppler.pdfToCairo(
-            pdfFile.path,
-            path.join(imagesDir, "page"),
-            { pngFile: true }
-        );
-
-        const imageFiles = fs.readdirSync(imagesDir).sort();
-        const pdfPaths = [];
-
-        for (const imgFile of imageFiles) {
-            const imgPath = path.join(imagesDir, imgFile);
-            const processedImg = path.join(imagesDir, `processed-${imgFile}`);
-
-            // ✅ Enhanced preprocessing
-            await new Promise(resolve => {
-                exec(
-                    `convert "${imgPath}" \
+                    // ✅ Enhanced preprocessing
+                    await new Promise(resolve => {
+                        exec(
+                            `convert "${imgPath}" \
                         -density 300 \
                         -units PixelsPerInch \
                         -colorspace Gray \
@@ -1295,71 +1295,190 @@ if (conversionType === "pdf->searchable-pdf") {
                         -sharpen 0x1 \
                         -deskew 40% \
                         "${processedImg}"`,
-                    () => resolve()
-                );
-            });
+                            () => resolve()
+                        );
+                    });
 
-            const inputForOCR = fs.existsSync(processedImg)
-                ? processedImg
-                : imgPath;
+                    const inputForOCR = fs.existsSync(processedImg)
+                        ? processedImg
+                        : imgPath;
 
-            const outputBase = path.join(outputDir, `ocr-${imgFile}`);
+                    const outputBase = path.join(outputDir, `ocr-${imgFile}`);
 
-            console.log(`🔍 OCR: ${imgFile}`);
+                    console.log(`🔍 OCR: ${imgFile}`);
 
-            // ✅ Improved Tesseract OCR
-            await new Promise((resolve, reject) => {
-                exec(
-                    `tesseract "${inputForOCR}" "${outputBase}" \
+                    // ✅ Improved Tesseract OCR
+                    await new Promise((resolve, reject) => {
+                        exec(
+                            `tesseract "${inputForOCR}" "${outputBase}" \
                         -l ${lang} \
                         --oem 1 \
                         --psm 6 \
                         -c preserve_interword_spaces=1 \
                         pdf`,
-                    (error, stdout, stderr) => {
-                        if (error) {
-                            console.error(stderr);
-                            reject(error);
-                        } else resolve();
-                    }
-                );
-            });
+                            (error, stdout, stderr) => {
+                                if (error) {
+                                    console.error(stderr);
+                                    reject(error);
+                                } else resolve();
+                            }
+                        );
+                    });
 
-            pdfPaths.push(`${outputBase}.pdf`);
+                    pdfPaths.push(`${outputBase}.pdf`);
+                }
+
+                const mergedPdf = await PDFDocument.create();
+
+                for (const pdfPath of pdfPaths) {
+                    const pdfBytes = fs.readFileSync(pdfPath);
+                    const pdf = await PDFDocument.load(pdfBytes);
+
+                    const copiedPages = await mergedPdf.copyPages(
+                        pdf,
+                        pdf.getPageIndices()
+                    );
+
+                    copiedPages.forEach(p => mergedPdf.addPage(p));
+                    fs.unlinkSync(pdfPath);
+                }
+
+                const mergedBytes = await mergedPdf.save();
+                const finalOutputPath = path.join(outputDir, "searchable.pdf");
+
+                fs.writeFileSync(finalOutputPath, mergedBytes);
+
+                console.log(`✅ Searchable PDF created (${lang})`);
+
+                return { success: true, outputPath: finalOutputPath };
+
+            } catch (err) {
+                console.error("❌ PDF → Searchable PDF FAILED:", err);
+                throw err;
+            }
+        }
+// ---------------- PDF REPAIR ----------------
+if (conversionType === "pdf->repair") {
+
+    console.log("🛠 PDF Repair started");
+
+    try {
+        const inputPdf = files[0].path;
+
+        const outputDir = path.join("uploads", "tmp", jobId, "output");
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
         }
 
-        const mergedPdf = await PDFDocument.create();
+        const outputPath = path.join(outputDir, "repaired.pdf");
 
-        for (const pdfPath of pdfPaths) {
-            const pdfBytes = fs.readFileSync(pdfPath);
-            const pdf = await PDFDocument.load(pdfBytes);
+        await new Promise((resolve, reject) => {
 
-            const copiedPages = await mergedPdf.copyPages(
-                pdf,
-                pdf.getPageIndices()
+            // ✅ Stage 1 — qpdf linearize (auto repair)
+            exec(
+                `qpdf --linearize "${inputPdf}" "${outputPath}"`,
+                (error, stdout, stderr) => {
+
+                    console.log("qpdf stdout:", stdout);
+                    console.log("qpdf stderr:", stderr);
+
+                    if (error || !fs.existsSync(outputPath)) {
+                        console.warn("⚠️ qpdf failed → trying Ghostscript");
+                        return ghostscriptFallback();
+                    }
+
+                    validateWithQpdf();
+                }
             );
 
-            copiedPages.forEach(p => mergedPdf.addPage(p));
-            fs.unlinkSync(pdfPath);
+            // ✅ Validate qpdf output
+            function validateWithQpdf() {
+                exec(
+                    `qpdf --check "${outputPath}"`,
+                    (checkError, checkStdout, checkStderr) => {
+
+                        console.log("qpdf check stdout:", checkStdout);
+                        console.log("qpdf check stderr:", checkStderr);
+
+                        if (checkError) {
+                            console.warn("❌ qpdf output invalid → trying Ghostscript");
+                            return ghostscriptFallback();
+                        }
+
+                        validatePages();
+                    }
+                );
+            }
+
+            // ✅ Stage 2 — Ghostscript fallback
+            function ghostscriptFallback() {
+                exec(
+                    `gs -o "${outputPath}" -sDEVICE=pdfwrite "${inputPdf}"`,
+                    (gsError, gsStdout, gsStderr) => {
+
+                        console.log("gs stdout:", gsStdout);
+                        console.log("gs stderr:", gsStderr);
+
+                        if (gsError || !fs.existsSync(outputPath)) {
+                            console.warn("⚠️ Ghostscript failed → fallback copy");
+                            fs.copyFileSync(inputPdf, outputPath);
+                            return validatePages();
+                        }
+
+                        console.log("✅ Ghostscript repair successful");
+                        validatePages();
+                    }
+                );
+            }
+
+            // ✅ FINAL VALIDATION — Check page count
+            function validatePages() {
+                exec(
+                    `pdfinfo "${outputPath}"`,
+                    (infoError, infoStdout, infoStderr) => {
+
+                        console.log("pdfinfo stdout:", infoStdout);
+                        console.log("pdfinfo stderr:", infoStderr);
+
+                        const match = infoStdout.match(/Pages:\s+(\d+)/);
+
+                        if (!match) {
+                            console.error("❌ Could not determine page count");
+                            return reject(new Error("Invalid repaired PDF"));
+                        }
+
+                        const pages = parseInt(match[1]);
+
+                        if (pages === 0) {
+                            console.error("❌ Repaired PDF has ZERO pages");
+                            return reject(new Error("PDF too corrupted — content unrecoverable"));
+                        }
+
+                        console.log(`✅ Repaired PDF valid with ${pages} pages`);
+                        resolve();
+                    }
+                );
+            }
+        });
+
+        const stats = fs.statSync(outputPath);
+        console.log("📊 Final repaired PDF size:", stats.size);
+
+        if (stats.size < 1000) {
+            throw new Error("❌ Repaired PDF too small");
         }
 
-        const mergedBytes = await mergedPdf.save();
-        const finalOutputPath = path.join(outputDir, "searchable.pdf");
+        console.log("✅ PDF Repair completed");
 
-        fs.writeFileSync(finalOutputPath, mergedBytes);
-
-        console.log(`✅ Searchable PDF created (${lang})`);
-
-        return { success: true, outputPath: finalOutputPath };
+        return { success: true, outputPath };
 
     } catch (err) {
-        console.error("❌ PDF → Searchable PDF FAILED:", err);
+        console.error("❌ PDF Repair FAILED:", err);
         throw err;
     }
 }
 
-
-        console.log("❌ Unsupported conversion");
+  console.log("❌ Unsupported conversion");
         return { success: false };
     },
     { connection: redisConnection }

@@ -1,14 +1,15 @@
 FROM node:20
 
 ENV DEBIAN_FRONTEND=noninteractive
-
 RUN apt-get update && apt-get install -y \
     poppler-utils \
     ghostscript \
     tesseract-ocr \
     imagemagick \
- && rm -rf /var/lib/apt/lists/*
-
+    qpdf \
+    mupdf-tools \
+    && rm -rf /var/lib/apt/lists/*
+    
 WORKDIR /app
 
 COPY backend/package*.json ./
