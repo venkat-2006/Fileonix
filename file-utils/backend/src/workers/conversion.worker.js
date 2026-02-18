@@ -1962,6 +1962,83 @@ if (conversionType === "pdf->extract") {
         throw err;
     }
 }
+// ---------------- PDF → HTML PREVIEW (CLEAN MODE) ----------------
+if (conversionType === "pdf->html") {
+
+    console.log("🌐 PDF → HTML Preview started");
+
+    try {
+        const inputPdf = files[0].path;
+
+        const baseDir = path.join("uploads", "tmp", jobId, "output");
+        const assetsDir = path.join(baseDir, "assets");
+
+        fs.mkdirSync(assetsDir, { recursive: true });
+
+        const poppler = new Poppler();
+
+        console.log("🖼 Rendering PDF pages → PNG...");
+
+        await poppler.pdfToCairo(
+            inputPdf,
+            path.join(assetsDir, "page"),
+            { pngFile: true }
+        );
+
+        const images = fs.readdirSync(assetsDir)
+            .filter(f => f.endsWith(".png"))
+            .sort();
+
+        if (images.length === 0) {
+            throw new Error("❌ No pages rendered");
+        }
+
+        console.log(`📸 Pages rendered: ${images.length}`);
+
+        const htmlPath = path.join(baseDir, "preview.html");
+
+        console.log("🌐 Generating HTML preview...");
+
+        const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Preview</title>
+    <style>
+        body {
+            margin: 0;
+            background: #1e1e1e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+        }
+        img {
+            width: 100%;
+            max-width: 900px;
+            margin: 20px 0;
+            background: white;
+            box-shadow: 0 0 12px rgba(0,0,0,0.6);
+        }
+    </style>
+</head>
+<body>
+    ${images.map(img => `<img src="assets/${img}" />`).join("")}
+</body>
+</html>
+`;
+
+        fs.writeFileSync(htmlPath, htmlContent);
+
+        console.log("✅ HTML Preview created");
+
+        return { success: true, outputPath: htmlPath };
+
+    } catch (err) {
+        console.error("❌ PDF → HTML Preview FAILED:", err);
+        throw err;
+    }
+}
 
 
         console.log("❌ Unsupported conversion");
