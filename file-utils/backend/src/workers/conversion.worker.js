@@ -1739,9 +1739,83 @@ if (conversionType === "pdf->remove-blank") {
         throw err;
     }
 }
+// ---------------- PDF → FLATTEN ----------------
+if (conversionType === "pdf->flatten") {
 
+    console.log("📄 PDF → Flatten started");
 
+    try {
+        const inputPdf = files[0].path;
 
+        const outputDir = path.join("uploads", "tmp", jobId, "output");
+        fs.mkdirSync(outputDir, { recursive: true });
+
+        const flattenedFields = path.join(outputDir, "fields_flattened.pdf");
+        const outputPath = path.join(outputDir, "flattened.pdf");
+
+        console.log("🚀 Step 1: Flattening form fields with qpdf...");
+
+        // Step 1: qpdf flattens interactive form fields & annotations
+        await new Promise((resolve, reject) => {
+            exec(
+                `qpdf --flatten-annotations=all --stream-data=compress "${inputPdf}" "${flattenedFields}"`,
+                (error, stdout, stderr) => {
+                    console.log("qpdf stdout:", stdout);
+                    console.log("qpdf stderr:", stderr);
+                    if (error) {
+                        console.error("❌ qpdf flatten failed:", error);
+                        reject(error);
+                    } else {
+                        resolve();
+                    }
+                }
+            );
+        });
+
+        console.log("🚀 Step 2: Burning to static PDF with Ghostscript...");
+
+        // Step 2: Ghostscript burns everything to static graphics
+        await new Promise((resolve, reject) => {
+            exec(
+                `gs -sDEVICE=pdfwrite `
+                + `-dNOPAUSE -dBATCH -dQUIET `
+                + `-dCompatibilityLevel=1.4 `
+                + `-dFlattenAnnotations `
+                + `-dPrinted `
+                + `-dNoInterpolate `
+                + `-sOutputFile="${outputPath}" `
+                + `"${flattenedFields}"`,
+                (error, stdout, stderr) => {
+                    console.log("gs stdout:", stdout);
+                    console.log("gs stderr:", stderr);
+                    if (error) {
+                        console.error("❌ Ghostscript failed:", error);
+                        reject(error);
+                    } else {
+                        resolve();
+                    }
+                }
+            );
+        });
+
+        // Cleanup intermediate file
+        try { fs.unlinkSync(flattenedFields); } catch (_) {}
+
+        const stats = fs.statSync(outputPath);
+        console.log("📊 Flattened PDF size:", stats.size);
+
+        if (stats.size < 1000) {
+            throw new Error("❌ Flattened PDF invalid / empty");
+        }
+
+        console.log("✅ PDF Flattened successfully");
+        return { success: true, outputPath };
+
+    } catch (err) {
+        console.error("❌ PDF → Flatten FAILED:", err);
+        throw err;
+    }
+}
         console.log("❌ Unsupported conversion");
         return { success: false };
     },
