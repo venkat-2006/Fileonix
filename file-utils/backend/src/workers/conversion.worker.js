@@ -1818,40 +1818,40 @@ const worker = new Worker(
         }
 
         // ---------------- PDF → METADATA ----------------
-if (conversionType === "pdf->metadata") {
+        if (conversionType === "pdf->metadata") {
 
-    console.log("🧾 PDF → Metadata extraction started");
+            console.log("🧾 PDF → Metadata extraction started");
 
-    try {
-        const inputPdf = files[0].path;
+            try {
+                const inputPdf = files[0].path;
 
-        const outputDir = path.join("uploads", "tmp", jobId, "output");
-        fs.mkdirSync(outputDir, { recursive: true });
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
+                fs.mkdirSync(outputDir, { recursive: true });
 
-        const jsonPath = path.join(outputDir, "metadata.json");
-        const txtPath = path.join(outputDir, "metadata.txt");
+                const jsonPath = path.join(outputDir, "metadata.json");
+                const txtPath = path.join(outputDir, "metadata.txt");
 
-        const pdfBytes = fs.readFileSync(inputPdf);
-        const pdfDoc = await PDFDocument.load(pdfBytes);
+                const pdfBytes = fs.readFileSync(inputPdf);
+                const pdfDoc = await PDFDocument.load(pdfBytes);
 
-        const meta = {
-            title: pdfDoc.getTitle(),
-            author: pdfDoc.getAuthor(),
-            subject: pdfDoc.getSubject(),
-            keywords: pdfDoc.getKeywords(),
-            creator: pdfDoc.getCreator(),
-            producer: pdfDoc.getProducer(),
-            creationDate: pdfDoc.getCreationDate(),
-            modificationDate: pdfDoc.getModificationDate(),
-        };
+                const meta = {
+                    title: pdfDoc.getTitle(),
+                    author: pdfDoc.getAuthor(),
+                    subject: pdfDoc.getSubject(),
+                    keywords: pdfDoc.getKeywords(),
+                    creator: pdfDoc.getCreator(),
+                    producer: pdfDoc.getProducer(),
+                    creationDate: pdfDoc.getCreationDate(),
+                    modificationDate: pdfDoc.getModificationDate(),
+                };
 
-        console.log("📊 Extracted metadata:", meta);
+                console.log("📊 Extracted metadata:", meta);
 
-        // ✅ Write JSON
-        fs.writeFileSync(jsonPath, JSON.stringify(meta, null, 2));
+                // ✅ Write JSON
+                fs.writeFileSync(jsonPath, JSON.stringify(meta, null, 2));
 
-        // ✅ Write TXT (pretty human-readable)
-        const prettyText = `
+                // ✅ Write TXT (pretty human-readable)
+                const prettyText = `
 PDF METADATA
 ============
 
@@ -1867,139 +1867,139 @@ Creation Date: ${meta.creationDate || "-"}
 Modification Date: ${meta.modificationDate || "-"}
 `;
 
-        fs.writeFileSync(txtPath, prettyText.trim());
+                fs.writeFileSync(txtPath, prettyText.trim());
 
-        console.log("✅ Metadata JSON + TXT created");
+                console.log("✅ Metadata JSON + TXT created");
 
-        return {
-            success: true,
-            output: {
-                json: jsonPath,
-                txt: txtPath
+                return {
+                    success: true,
+                    output: {
+                        json: jsonPath,
+                        txt: txtPath
+                    }
+                };
+
+            } catch (err) {
+                console.error("❌ PDF → Metadata FAILED:", err);
+                throw err;
             }
-        };
-
-    } catch (err) {
-        console.error("❌ PDF → Metadata FAILED:", err);
-        throw err;
-    }
-}
-// ---------------- PDF → EXTRACT PAGES ----------------
-if (conversionType === "pdf->extract") {
-
-    console.log("📑 PDF → Extract Pages started");
-
-    try {
-        if (!files || files.length === 0) {
-            throw new Error("❌ No PDF file provided");
         }
+        // ---------------- PDF → EXTRACT PAGES ----------------
+        if (conversionType === "pdf->extract") {
 
-        const inputPdf = files[0].path;
-        const { pages } = job.data;
+            console.log("📑 PDF → Extract Pages started");
 
-        if (!pages || pages.trim() === "") {
-            throw new Error("❌ Pages parameter required (e.g. 2,5,8)");
-        }
-
-        const outputDir = path.join("uploads", "tmp", jobId, "output");
-        fs.mkdirSync(outputDir, { recursive: true });
-
-        const outputPath = path.join(outputDir, "extracted-pages.pdf");
-
-        // ✅ Convert pages → zero-based indices
-        const extractPages = pages.split(",")
-            .map(p => p.trim())
-            .filter(p => p !== "")
-            .map(p => {
-                const pageNum = parseInt(p, 10);
-
-                if (isNaN(pageNum)) {
-                    throw new Error(`❌ Invalid page value: "${p}"`);
+            try {
+                if (!files || files.length === 0) {
+                    throw new Error("❌ No PDF file provided");
                 }
 
-                return pageNum - 1;
-            });
+                const inputPdf = files[0].path;
+                const { pages } = job.data;
 
-        const pdfBytes = fs.readFileSync(inputPdf);
-        const pdfDoc = await PDFDocument.load(pdfBytes);
+                if (!pages || pages.trim() === "") {
+                    throw new Error("❌ Pages parameter required (e.g. 2,5,8)");
+                }
 
-        const totalPages = pdfDoc.getPageCount();
-        console.log(`📄 Total pages in PDF: ${totalPages}`);
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
+                fs.mkdirSync(outputDir, { recursive: true });
 
-        // ✅ Validate page numbers
-        extractPages.forEach(p => {
-            if (p < 0 || p >= totalPages) {
-                throw new Error(`❌ Invalid page number: ${p + 1}`);
+                const outputPath = path.join(outputDir, "extracted-pages.pdf");
+
+                // ✅ Convert pages → zero-based indices
+                const extractPages = pages.split(",")
+                    .map(p => p.trim())
+                    .filter(p => p !== "")
+                    .map(p => {
+                        const pageNum = parseInt(p, 10);
+
+                        if (isNaN(pageNum)) {
+                            throw new Error(`❌ Invalid page value: "${p}"`);
+                        }
+
+                        return pageNum - 1;
+                    });
+
+                const pdfBytes = fs.readFileSync(inputPdf);
+                const pdfDoc = await PDFDocument.load(pdfBytes);
+
+                const totalPages = pdfDoc.getPageCount();
+                console.log(`📄 Total pages in PDF: ${totalPages}`);
+
+                // ✅ Validate page numbers
+                extractPages.forEach(p => {
+                    if (p < 0 || p >= totalPages) {
+                        throw new Error(`❌ Invalid page number: ${p + 1}`);
+                    }
+                });
+
+                // ✅ Remove duplicates
+                const uniquePages = [...new Set(extractPages)];
+
+                console.log(`✅ Extracting pages: ${uniquePages.map(p => p + 1).join(", ")}`);
+
+                const newPdf = await PDFDocument.create();
+
+                const copiedPages = await newPdf.copyPages(pdfDoc, uniquePages);
+                copiedPages.forEach(page => newPdf.addPage(page));
+
+                const extractedBytes = await newPdf.save();
+                fs.writeFileSync(outputPath, extractedBytes);
+
+                const stats = fs.statSync(outputPath);
+                console.log("📊 Extracted PDF size:", stats.size);
+
+                if (stats.size < 1000) {
+                    throw new Error("❌ Extracted PDF invalid / empty");
+                }
+
+                console.log("✅ Pages extracted successfully");
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ PDF → Extract Pages FAILED:", err);
+                throw err;
             }
-        });
-
-        // ✅ Remove duplicates
-        const uniquePages = [...new Set(extractPages)];
-
-        console.log(`✅ Extracting pages: ${uniquePages.map(p => p + 1).join(", ")}`);
-
-        const newPdf = await PDFDocument.create();
-
-        const copiedPages = await newPdf.copyPages(pdfDoc, uniquePages);
-        copiedPages.forEach(page => newPdf.addPage(page));
-
-        const extractedBytes = await newPdf.save();
-        fs.writeFileSync(outputPath, extractedBytes);
-
-        const stats = fs.statSync(outputPath);
-        console.log("📊 Extracted PDF size:", stats.size);
-
-        if (stats.size < 1000) {
-            throw new Error("❌ Extracted PDF invalid / empty");
         }
+        // ---------------- PDF → HTML PREVIEW (CLEAN MODE) ----------------
+        if (conversionType === "pdf->html") {
 
-        console.log("✅ Pages extracted successfully");
+            console.log("🌐 PDF → HTML Preview started");
 
-        return { success: true, outputPath };
+            try {
+                const inputPdf = files[0].path;
 
-    } catch (err) {
-        console.error("❌ PDF → Extract Pages FAILED:", err);
-        throw err;
-    }
-}
-// ---------------- PDF → HTML PREVIEW (CLEAN MODE) ----------------
-if (conversionType === "pdf->html") {
+                const baseDir = path.join("uploads", "tmp", jobId, "output");
+                const assetsDir = path.join(baseDir, "assets");
 
-    console.log("🌐 PDF → HTML Preview started");
+                fs.mkdirSync(assetsDir, { recursive: true });
 
-    try {
-        const inputPdf = files[0].path;
+                const poppler = new Poppler();
 
-        const baseDir = path.join("uploads", "tmp", jobId, "output");
-        const assetsDir = path.join(baseDir, "assets");
+                console.log("🖼 Rendering PDF pages → PNG...");
 
-        fs.mkdirSync(assetsDir, { recursive: true });
+                await poppler.pdfToCairo(
+                    inputPdf,
+                    path.join(assetsDir, "page"),
+                    { pngFile: true }
+                );
 
-        const poppler = new Poppler();
+                const images = fs.readdirSync(assetsDir)
+                    .filter(f => f.endsWith(".png"))
+                    .sort();
 
-        console.log("🖼 Rendering PDF pages → PNG...");
+                if (images.length === 0) {
+                    throw new Error("❌ No pages rendered");
+                }
 
-        await poppler.pdfToCairo(
-            inputPdf,
-            path.join(assetsDir, "page"),
-            { pngFile: true }
-        );
+                console.log(`📸 Pages rendered: ${images.length}`);
 
-        const images = fs.readdirSync(assetsDir)
-            .filter(f => f.endsWith(".png"))
-            .sort();
+                const htmlPath = path.join(baseDir, "preview.html");
 
-        if (images.length === 0) {
-            throw new Error("❌ No pages rendered");
-        }
+                console.log("🌐 Generating HTML preview...");
 
-        console.log(`📸 Pages rendered: ${images.length}`);
-
-        const htmlPath = path.join(baseDir, "preview.html");
-
-        console.log("🌐 Generating HTML preview...");
-
-        const htmlContent = `
+                const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -2028,17 +2028,17 @@ if (conversionType === "pdf->html") {
 </html>
 `;
 
-        fs.writeFileSync(htmlPath, htmlContent);
+                fs.writeFileSync(htmlPath, htmlContent);
 
-        console.log("✅ HTML Preview created");
+                console.log("✅ HTML Preview created");
 
-        return { success: true, outputPath: htmlPath };
+                return { success: true, outputPath: htmlPath };
 
-    } catch (err) {
-        console.error("❌ PDF → HTML Preview FAILED:", err);
-        throw err;
-    }
-}
+            } catch (err) {
+                console.error("❌ PDF → HTML Preview FAILED:", err);
+                throw err;
+            }
+        }
 
 
         console.log("❌ Unsupported conversion");
