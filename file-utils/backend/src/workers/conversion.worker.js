@@ -1629,120 +1629,198 @@ const worker = new Worker(
                 throw err;
             }
         }
-// ---------------- PDF → REMOVE BLANK PAGES (PRO MODE FIXED) ----------------
-if (conversionType === "pdf->remove-blank") {
+        // ---------------- PDF → REMOVE BLANK PAGES (PRO MODE FIXED) ----------------
+        if (conversionType === "pdf->remove-blank") {
 
-    console.log("🧹 PDF → Remove Blank Pages (Pro Mode)");
+            console.log("🧹 PDF → Remove Blank Pages (Pro Mode)");
 
-    try {
-        const inputPdf = files[0].path;
+            try {
+                const inputPdf = files[0].path;
 
-        const outputDir = path.join("uploads", "tmp", jobId, "output");
-        const tempDir = path.join(outputDir, "blank-check");
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
+                const tempDir = path.join(outputDir, "blank-check");
 
-        fs.mkdirSync(tempDir, { recursive: true });
+                fs.mkdirSync(tempDir, { recursive: true });
 
-        const poppler = new Poppler();
+                const poppler = new Poppler();
 
-        // 1️⃣ Render pages → PNG
-        console.log("🖼 Rendering pages...");
+                // 1️⃣ Render pages → PNG
+                console.log("🖼 Rendering pages...");
 
-        await poppler.pdfToCairo(
-            inputPdf,
-            path.join(tempDir, "page"),
-            { pngFile: true }
-        );
-
-        const imageFiles = fs.readdirSync(tempDir)
-            .filter(f => f.endsWith(".png"))
-            .sort();
-
-        if (imageFiles.length === 0) {
-            throw new Error("❌ No pages rendered");
-        }
-
-        const keepPages = [];
-
-        // 2️⃣ Pixel-based blank detection
-        for (let i = 0; i < imageFiles.length; i++) {
-
-            const imgPath = path.join(tempDir, imageFiles[i]);
-
-            const mean = await new Promise((resolve) => {
-                exec(
-                    `convert "${imgPath}" -colorspace Gray -format "%[fx:mean]" info:`,
-                    (error, stdout, stderr) => {
-
-                        if (error) {
-                            console.warn(`⚠️ Mean detection failed for page ${i + 1}`);
-                            console.warn(stderr);
-                            resolve(0); // safe fallback → treat as NOT blank
-                        } else {
-                            resolve(parseFloat(stdout.trim()));
-                        }
-                    }
+                await poppler.pdfToCairo(
+                    inputPdf,
+                    path.join(tempDir, "page"),
+                    { pngFile: true }
                 );
-            });
 
-            console.log(`📊 Page ${i + 1} mean: ${mean}`);
+                const imageFiles = fs.readdirSync(tempDir)
+                    .filter(f => f.endsWith(".png"))
+                    .sort();
 
-            // ✅ FIXED THRESHOLD
-            const isBlank = mean > 0.995;
+                if (imageFiles.length === 0) {
+                    throw new Error("❌ No pages rendered");
+                }
 
-            if (isBlank) {
-                console.log(`🗑 Blank page detected: ${i + 1}`);
-            } else {
-                keepPages.push(i);
+                const keepPages = [];
+
+                // 2️⃣ Pixel-based blank detection
+                for (let i = 0; i < imageFiles.length; i++) {
+
+                    const imgPath = path.join(tempDir, imageFiles[i]);
+
+                    const mean = await new Promise((resolve) => {
+                        exec(
+                            `convert "${imgPath}" -colorspace Gray -format "%[fx:mean]" info:`,
+                            (error, stdout, stderr) => {
+
+                                if (error) {
+                                    console.warn(`⚠️ Mean detection failed for page ${i + 1}`);
+                                    console.warn(stderr);
+                                    resolve(0); // safe fallback → treat as NOT blank
+                                } else {
+                                    resolve(parseFloat(stdout.trim()));
+                                }
+                            }
+                        );
+                    });
+
+                    console.log(`📊 Page ${i + 1} mean: ${mean}`);
+
+                    // ✅ FIXED THRESHOLD
+                    const isBlank = mean > 0.995;
+
+                    if (isBlank) {
+                        console.log(`🗑 Blank page detected: ${i + 1}`);
+                    } else {
+                        keepPages.push(i);
+                    }
+                }
+
+                if (keepPages.length === 0) {
+                    throw new Error("❌ All pages detected blank");
+                }
+
+                console.log(`✅ Keeping ${keepPages.length} / ${imageFiles.length} pages`);
+
+                // 3️⃣ Rebuild PDF
+                const pdfBytes = fs.readFileSync(inputPdf);
+                const pdfDoc = await PDFDocument.load(pdfBytes);
+
+                const newPdf = await PDFDocument.create();
+
+                const pages = await newPdf.copyPages(pdfDoc, keepPages);
+                pages.forEach(p => newPdf.addPage(p));
+
+                const cleanedBytes = await newPdf.save();
+
+                const outputPath = path.join(outputDir, "no-blanks.pdf");
+                fs.writeFileSync(outputPath, cleanedBytes);
+
+                // ✅ Validate output
+                const stats = fs.statSync(outputPath);
+                console.log("📊 Cleaned PDF size:", stats.size);
+
+                if (stats.size < 1000) {
+                    throw new Error("❌ Output PDF invalid");
+                }
+
+                // 4️⃣ Cleanup
+                console.log("🧹 Cleaning temp files...");
+                if (fs.existsSync(tempDir)) {
+                    fs.rmSync(tempDir, { recursive: true });
+                }
+
+                console.log("✅ Blank pages removed successfully");
+
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ Remove Blank FAILED:", err);
+                throw err;
+            }
+        }
+        // ---------------- PDF → FLATTEN ----------------
+        if (conversionType === "pdf->flatten") {
+
+            console.log("📄 PDF → Flatten started");
+
+            try {
+                const inputPdf = files[0].path;
+
+                const outputDir = path.join("uploads", "tmp", jobId, "output");
+                fs.mkdirSync(outputDir, { recursive: true });
+
+                const flattenedFields = path.join(outputDir, "fields_flattened.pdf");
+                const outputPath = path.join(outputDir, "flattened.pdf");
+
+                console.log("🚀 Step 1: Flattening form fields with qpdf...");
+
+                // Step 1: qpdf flattens interactive form fields & annotations
+                await new Promise((resolve, reject) => {
+                    exec(
+                        `qpdf --flatten-annotations=all --stream-data=compress "${inputPdf}" "${flattenedFields}"`,
+                        (error, stdout, stderr) => {
+                            console.log("qpdf stdout:", stdout);
+                            console.log("qpdf stderr:", stderr);
+                            if (error) {
+                                console.error("❌ qpdf flatten failed:", error);
+                                reject(error);
+                            } else {
+                                resolve();
+                            }
+                        }
+                    );
+                });
+
+                console.log("🚀 Step 2: Burning to static PDF with Ghostscript...");
+
+                // Step 2: Ghostscript burns everything to static graphics
+                await new Promise((resolve, reject) => {
+                    exec(
+                        `gs -sDEVICE=pdfwrite `
+                        + `-dNOPAUSE -dBATCH -dQUIET `
+                        + `-dCompatibilityLevel=1.4 `
+                        + `-dFlattenAnnotations `
+                        + `-dPrinted `
+                        + `-dNoInterpolate `
+                        + `-sOutputFile="${outputPath}" `
+                        + `"${flattenedFields}"`,
+                        (error, stdout, stderr) => {
+                            console.log("gs stdout:", stdout);
+                            console.log("gs stderr:", stderr);
+                            if (error) {
+                                console.error("❌ Ghostscript failed:", error);
+                                reject(error);
+                            } else {
+                                resolve();
+                            }
+                        }
+                    );
+                });
+
+                // Cleanup intermediate file
+                try { fs.unlinkSync(flattenedFields); } catch (_) { }
+
+                const stats = fs.statSync(outputPath);
+                console.log("📊 Flattened PDF size:", stats.size);
+
+                if (stats.size < 1000) {
+                    throw new Error("❌ Flattened PDF invalid / empty");
+                }
+
+                console.log("✅ PDF Flattened successfully");
+                return { success: true, outputPath };
+
+            } catch (err) {
+                console.error("❌ PDF → Flatten FAILED:", err);
+                throw err;
             }
         }
 
-        if (keepPages.length === 0) {
-            throw new Error("❌ All pages detected blank");
-        }
+        // ---------------- PDF → METADATA ----------------
+if (conversionType === "pdf->metadata") {
 
-        console.log(`✅ Keeping ${keepPages.length} / ${imageFiles.length} pages`);
-
-        // 3️⃣ Rebuild PDF
-        const pdfBytes = fs.readFileSync(inputPdf);
-        const pdfDoc = await PDFDocument.load(pdfBytes);
-
-        const newPdf = await PDFDocument.create();
-
-        const pages = await newPdf.copyPages(pdfDoc, keepPages);
-        pages.forEach(p => newPdf.addPage(p));
-
-        const cleanedBytes = await newPdf.save();
-
-        const outputPath = path.join(outputDir, "no-blanks.pdf");
-        fs.writeFileSync(outputPath, cleanedBytes);
-
-        // ✅ Validate output
-        const stats = fs.statSync(outputPath);
-        console.log("📊 Cleaned PDF size:", stats.size);
-
-        if (stats.size < 1000) {
-            throw new Error("❌ Output PDF invalid");
-        }
-
-        // 4️⃣ Cleanup
-        console.log("🧹 Cleaning temp files...");
-        if (fs.existsSync(tempDir)) {
-            fs.rmSync(tempDir, { recursive: true });
-        }
-
-        console.log("✅ Blank pages removed successfully");
-
-        return { success: true, outputPath };
-
-    } catch (err) {
-        console.error("❌ Remove Blank FAILED:", err);
-        throw err;
-    }
-}
-// ---------------- PDF → FLATTEN ----------------
-if (conversionType === "pdf->flatten") {
-
-    console.log("📄 PDF → Flatten started");
+    console.log("🧾 PDF → Metadata extraction started");
 
     try {
         const inputPdf = files[0].path;
@@ -1750,72 +1828,63 @@ if (conversionType === "pdf->flatten") {
         const outputDir = path.join("uploads", "tmp", jobId, "output");
         fs.mkdirSync(outputDir, { recursive: true });
 
-        const flattenedFields = path.join(outputDir, "fields_flattened.pdf");
-        const outputPath = path.join(outputDir, "flattened.pdf");
+        const jsonPath = path.join(outputDir, "metadata.json");
+        const txtPath = path.join(outputDir, "metadata.txt");
 
-        console.log("🚀 Step 1: Flattening form fields with qpdf...");
+        const pdfBytes = fs.readFileSync(inputPdf);
+        const pdfDoc = await PDFDocument.load(pdfBytes);
 
-        // Step 1: qpdf flattens interactive form fields & annotations
-        await new Promise((resolve, reject) => {
-            exec(
-                `qpdf --flatten-annotations=all --stream-data=compress "${inputPdf}" "${flattenedFields}"`,
-                (error, stdout, stderr) => {
-                    console.log("qpdf stdout:", stdout);
-                    console.log("qpdf stderr:", stderr);
-                    if (error) {
-                        console.error("❌ qpdf flatten failed:", error);
-                        reject(error);
-                    } else {
-                        resolve();
-                    }
-                }
-            );
-        });
+        const meta = {
+            title: pdfDoc.getTitle(),
+            author: pdfDoc.getAuthor(),
+            subject: pdfDoc.getSubject(),
+            keywords: pdfDoc.getKeywords(),
+            creator: pdfDoc.getCreator(),
+            producer: pdfDoc.getProducer(),
+            creationDate: pdfDoc.getCreationDate(),
+            modificationDate: pdfDoc.getModificationDate(),
+        };
 
-        console.log("🚀 Step 2: Burning to static PDF with Ghostscript...");
+        console.log("📊 Extracted metadata:", meta);
 
-        // Step 2: Ghostscript burns everything to static graphics
-        await new Promise((resolve, reject) => {
-            exec(
-                `gs -sDEVICE=pdfwrite `
-                + `-dNOPAUSE -dBATCH -dQUIET `
-                + `-dCompatibilityLevel=1.4 `
-                + `-dFlattenAnnotations `
-                + `-dPrinted `
-                + `-dNoInterpolate `
-                + `-sOutputFile="${outputPath}" `
-                + `"${flattenedFields}"`,
-                (error, stdout, stderr) => {
-                    console.log("gs stdout:", stdout);
-                    console.log("gs stderr:", stderr);
-                    if (error) {
-                        console.error("❌ Ghostscript failed:", error);
-                        reject(error);
-                    } else {
-                        resolve();
-                    }
-                }
-            );
-        });
+        // ✅ Write JSON
+        fs.writeFileSync(jsonPath, JSON.stringify(meta, null, 2));
 
-        // Cleanup intermediate file
-        try { fs.unlinkSync(flattenedFields); } catch (_) {}
+        // ✅ Write TXT (pretty human-readable)
+        const prettyText = `
+PDF METADATA
+============
 
-        const stats = fs.statSync(outputPath);
-        console.log("📊 Flattened PDF size:", stats.size);
+Title: ${meta.title || "-"}
+Author: ${meta.author || "-"}
+Subject: ${meta.subject || "-"}
+Keywords: ${meta.keywords || "-"}
 
-        if (stats.size < 1000) {
-            throw new Error("❌ Flattened PDF invalid / empty");
-        }
+Creator: ${meta.creator || "-"}
+Producer: ${meta.producer || "-"}
 
-        console.log("✅ PDF Flattened successfully");
-        return { success: true, outputPath };
+Creation Date: ${meta.creationDate || "-"}
+Modification Date: ${meta.modificationDate || "-"}
+`;
+
+        fs.writeFileSync(txtPath, prettyText.trim());
+
+        console.log("✅ Metadata JSON + TXT created");
+
+        return {
+            success: true,
+            output: {
+                json: jsonPath,
+                txt: txtPath
+            }
+        };
 
     } catch (err) {
-        console.error("❌ PDF → Flatten FAILED:", err);
+        console.error("❌ PDF → Metadata FAILED:", err);
         throw err;
     }
 }
+
         console.log("❌ Unsupported conversion");
         return { success: false };
     },
