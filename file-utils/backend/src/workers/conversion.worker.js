@@ -210,37 +210,7 @@ const worker = new Worker(
             }
         }
 
-        // ---------------- PDF → IMAGES ----------------
-        if (conversionType === "pdf->images") {
-            console.log("🖼 PDF → Images started");
-
-            try {
-                const pdfFile = files[0];
-
-                const outputDir = path.join("uploads", "tmp", jobId, "output", "images");
-
-
-                if (!fs.existsSync(outputDir)) {
-                    fs.mkdirSync(outputDir, { recursive: true });
-                }
-
-                const poppler = new Poppler();
-
-                await poppler.pdfToCairo(
-                    pdfFile.path,
-                    path.join(outputDir, "page"),
-                    { pngFile: true }
-                );
-
-                console.log("✅ PDF → Images done");
-
-                return { success: true };
-
-            } catch (err) {
-                console.error("❌ PDF → Images FAILED:", err);
-                throw err;
-            }
-        }
+       
 
         // ---------------- IMAGE → DOCX ----------------
         if (conversionType === "image->docx") {
@@ -1533,6 +1503,129 @@ if (conversionType === "pdf->grayscale") {
 
     } catch (err) {
         console.error("❌ PDF → Grayscale FAILED:", err);
+        throw err;
+    }
+}
+// ---------------- PDF → RENDER IMAGES ----------------
+if (conversionType === "pdf->render-images") {
+
+    console.log("🖼 PDF → Render Images started");
+
+    try {
+        const inputPdf = files[0].path;
+
+        // ✅ Standard output path
+        const outputDir = path.join("uploads", "tmp", jobId, "output", "images");
+        fs.mkdirSync(outputDir, { recursive: true });
+
+        const poppler = new Poppler();
+
+        try {
+            // 🥇 PRIMARY → Poppler renderer
+            console.log("🚀 Trying Poppler renderer...");
+
+            await poppler.pdfToCairo(
+                inputPdf,
+                path.join(outputDir, "page"),
+                { pngFile: true }
+            );
+
+            console.log("✅ Poppler rendering successful");
+
+        } catch (popplerError) {
+
+            // 🛠 FALLBACK → Ghostscript
+            console.warn("⚠️ Poppler failed → Falling back to Ghostscript");
+
+            const outputPattern = path.join(outputDir, "page-%03d.png");
+
+            await new Promise((resolve, reject) => {
+                exec(
+                    `gs -dNOPAUSE -dBATCH -dQUIET `
+                    + `-sDEVICE=png16m `
+                    + `-r300 `
+                    + `-o "${outputPattern}" `
+                    + `"${inputPdf}"`,
+                    (error, stdout, stderr) => {
+
+                        console.log("gs stdout:", stdout);
+                        console.log("gs stderr:", stderr);
+
+                        if (error) reject(error);
+                        else resolve();
+                    }
+                );
+            });
+
+            console.log("✅ Ghostscript fallback successful");
+        }
+
+        // ✅ Validate output
+        const images = fs.readdirSync(outputDir)
+            .filter(f => f.endsWith(".png"));
+
+        console.log(`📸 Rendered pages: ${images.length}`);
+
+        if (images.length === 0) {
+            throw new Error("❌ No images rendered from PDF");
+        }
+
+        return { success: true };
+
+    } catch (err) {
+        console.error("❌ PDF → Render Images FAILED:", err);
+        throw err;
+    }
+}
+// ---------------- PDF → EXTRACT EMBEDDED IMAGES ----------------
+if (conversionType === "pdf->extract-images") {
+
+    console.log("🖼 PDF → Extract Embedded Images started");
+
+    try {
+        const inputPdf = files[0].path;
+
+        const outputDir = path.join("uploads", "tmp", jobId, "output", "extracted-images");
+        fs.mkdirSync(outputDir, { recursive: true });
+
+        await new Promise((resolve, reject) => {
+            exec(
+                `pdfimages -all "${inputPdf}" "${path.join(outputDir, "img")}"`,
+                (error, stdout, stderr) => {
+
+                    console.log("pdfimages stdout:", stdout);
+                    console.log("pdfimages stderr:", stderr);
+
+                    if (error) {
+                        console.error("❌ pdfimages failed");
+                        reject(error);
+                    } else {
+                        resolve();
+                    }
+                }
+            );
+        });
+
+        // ✅ Validate extraction
+        const images = fs.readdirSync(outputDir)
+            .filter(f =>
+                f.endsWith(".png") ||
+                f.endsWith(".jpg") ||
+                f.endsWith(".jpeg")
+            );
+
+        console.log(`📸 Extracted embedded images: ${images.length}`);
+
+        if (images.length === 0) {
+            throw new Error("❌ No embedded images found in PDF");
+        }
+
+        console.log("✅ Embedded images extracted successfully");
+
+        return { success: true };
+
+    } catch (err) {
+        console.error("❌ PDF → Extract Embedded Images FAILED:", err);
         throw err;
     }
 }
