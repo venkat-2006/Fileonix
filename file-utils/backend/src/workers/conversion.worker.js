@@ -1884,6 +1884,85 @@ Modification Date: ${meta.modificationDate || "-"}
         throw err;
     }
 }
+// ---------------- PDF → EXTRACT PAGES ----------------
+if (conversionType === "pdf->extract") {
+
+    console.log("📑 PDF → Extract Pages started");
+
+    try {
+        if (!files || files.length === 0) {
+            throw new Error("❌ No PDF file provided");
+        }
+
+        const inputPdf = files[0].path;
+        const { pages } = job.data;
+
+        if (!pages || pages.trim() === "") {
+            throw new Error("❌ Pages parameter required (e.g. 2,5,8)");
+        }
+
+        const outputDir = path.join("uploads", "tmp", jobId, "output");
+        fs.mkdirSync(outputDir, { recursive: true });
+
+        const outputPath = path.join(outputDir, "extracted-pages.pdf");
+
+        // ✅ Convert pages → zero-based indices
+        const extractPages = pages.split(",")
+            .map(p => p.trim())
+            .filter(p => p !== "")
+            .map(p => {
+                const pageNum = parseInt(p, 10);
+
+                if (isNaN(pageNum)) {
+                    throw new Error(`❌ Invalid page value: "${p}"`);
+                }
+
+                return pageNum - 1;
+            });
+
+        const pdfBytes = fs.readFileSync(inputPdf);
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+
+        const totalPages = pdfDoc.getPageCount();
+        console.log(`📄 Total pages in PDF: ${totalPages}`);
+
+        // ✅ Validate page numbers
+        extractPages.forEach(p => {
+            if (p < 0 || p >= totalPages) {
+                throw new Error(`❌ Invalid page number: ${p + 1}`);
+            }
+        });
+
+        // ✅ Remove duplicates
+        const uniquePages = [...new Set(extractPages)];
+
+        console.log(`✅ Extracting pages: ${uniquePages.map(p => p + 1).join(", ")}`);
+
+        const newPdf = await PDFDocument.create();
+
+        const copiedPages = await newPdf.copyPages(pdfDoc, uniquePages);
+        copiedPages.forEach(page => newPdf.addPage(page));
+
+        const extractedBytes = await newPdf.save();
+        fs.writeFileSync(outputPath, extractedBytes);
+
+        const stats = fs.statSync(outputPath);
+        console.log("📊 Extracted PDF size:", stats.size);
+
+        if (stats.size < 1000) {
+            throw new Error("❌ Extracted PDF invalid / empty");
+        }
+
+        console.log("✅ Pages extracted successfully");
+
+        return { success: true, outputPath };
+
+    } catch (err) {
+        console.error("❌ PDF → Extract Pages FAILED:", err);
+        throw err;
+    }
+}
+
 
         console.log("❌ Unsupported conversion");
         return { success: false };
