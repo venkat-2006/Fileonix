@@ -16,6 +16,43 @@ import compromise from "compromise";
 
 
 const nlp = winkNLP(winkModel);
+function cosineSimilarity(textA, textB) {
+
+    const tokenize = (text) =>
+        text.toLowerCase().match(/\b[a-z]{3,}\b/g) || [];
+
+    const freqMap = (tokens) => {
+        const map = {};
+        tokens.forEach(t => map[t] = (map[t] || 0) + 1);
+        return map;
+    };
+
+    const tokensA = tokenize(textA);
+    const tokensB = tokenize(textB);
+
+    const freqA = freqMap(tokensA);
+    const freqB = freqMap(tokensB);
+
+    const allWords = new Set([...Object.keys(freqA), ...Object.keys(freqB)]);
+
+    let dot = 0, magA = 0, magB = 0;
+
+    for (const word of allWords) {
+        const a = freqA[word] || 0;
+        const b = freqB[word] || 0;
+
+        dot += a * b;
+        magA += a * a;
+        magB += b * b;
+    }
+
+    magA = Math.sqrt(magA);
+    magB = Math.sqrt(magB);
+
+    if (magA === 0 || magB === 0) return 0;
+
+    return dot / (magA * magB);
+}
 
 
 
@@ -2337,6 +2374,120 @@ if (conversionType === "pdf->keywords") {
 //         throw err;
 //     }
 // }
+// ---------------- FILE EXPIRY / SELF-DESTRUCT ----------------
+if (conversionType === "file->expiry") {
+
+    console.log("⏳ File Expiry scheduled");
+
+    try {
+        const { expiryMinutes, expiryHours } = job.data;
+
+        const minutes =
+            expiryMinutes
+                ? parseInt(expiryMinutes)
+                : expiryHours
+                    ? parseInt(expiryHours) * 60
+                    : 60; // default 1 hour
+
+        const expiryMs = minutes * 60 * 1000;
+
+        const baseDir = path.join("uploads", "tmp", jobId);
+
+        if (!fs.existsSync(baseDir)) {
+            throw new Error("❌ Job folder not found");
+        }
+
+        console.log(`🕒 Will self-destruct in ${minutes} minutes`);
+
+        setTimeout(() => {
+            try {
+                if (fs.existsSync(baseDir)) {
+                    fs.rmSync(baseDir, { recursive: true, force: true });
+                    console.log(`💥 Job ${jobId} self-destructed`);
+                }
+            } catch (err) {
+                console.warn(`⚠️ Expiry cleanup failed for ${jobId}`);
+            }
+        }, expiryMs);
+
+        return { success: true };
+
+    } catch (err) {
+        console.error("❌ File Expiry FAILED:", err.message);
+        throw err;
+    }
+}
+// ---------------- PDF → SIMILARITY ----------------
+if (conversionType === "pdf->similarity") {
+
+    console.log("📊 PDF Similarity started");
+
+    try {
+        if (!files || files.length !== 2) {
+            throw new Error("❌ Exactly 2 PDFs required");
+        }
+
+        const poppler = new Poppler();
+
+        const outputDir = path.join("uploads", "tmp", jobId, "output");
+        fs.mkdirSync(outputDir, { recursive: true });
+
+        const text1Path = path.join(outputDir, "pdf1.txt");
+        const text2Path = path.join(outputDir, "pdf2.txt");
+
+        console.log("📄 Extracting PDF 1...");
+        await poppler.pdfToText(files[0].path, text1Path);
+
+        console.log("📄 Extracting PDF 2...");
+        await poppler.pdfToText(files[1].path, text2Path);
+
+        const clean = (text) =>
+            text
+                .replace(/\f/g, " ")
+                .replace(/Page\s+\d+/gi, "")
+                .replace(/\s+/g, " ")
+                .trim();
+
+        const textA = clean(fs.readFileSync(text1Path, "utf-8"));
+        const textB = clean(fs.readFileSync(text2Path, "utf-8"));
+
+        if (textA.length < 50 || textB.length < 50) {
+            throw new Error("❌ Poor text extraction");
+        }
+
+        console.log("🧠 Computing similarity...");
+
+        const similarity = cosineSimilarity(textA, textB);
+        const percent = (similarity * 100).toFixed(2);
+
+        const report = `
+PDF SIMILARITY REPORT
+=====================
+
+Similarity Score: ${percent} %
+
+Interpretation:
+${percent > 85 ? "🟢 Highly Similar" :
+percent > 60 ? "🟡 Moderately Similar" :
+percent > 30 ? "🟠 Low Similarity" :
+"🔴 Very Different"}
+
+----------------
+Generated: ${new Date().toLocaleString()}
+`;
+
+        const outputPath = path.join(outputDir, "similarity.txt");
+        fs.writeFileSync(outputPath, report.trim());
+
+        console.log(`✅ Similarity: ${percent}%`);
+
+        return { success: true, outputPath };
+
+    } catch (err) {
+        console.error("❌ PDF Similarity FAILED:", err.message);
+        throw err;
+    }
+}
         console.log("❌ Unsupported conversion");
         return { success: false };
     },
