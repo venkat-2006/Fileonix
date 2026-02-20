@@ -9,6 +9,15 @@ import { Document, Packer, Paragraph, ImageRun, TextRun, AlignmentType, BorderSt
 import { exec } from "child_process";
 import { extractTextFromImage } from "../utils/ocr.js";
 
+import winkNLP from "wink-nlp";
+import winkModel from "wink-eng-lite-web-model";
+import keywordExtractor from "keyword-extractor";
+import compromise from "compromise";
+
+
+const nlp = winkNLP(winkModel);
+
+
 
 // Helper function to create tables (moved outside worker)
 function createTableFromRows(rows) {
@@ -2039,8 +2048,295 @@ Modification Date: ${meta.modificationDate || "-"}
                 throw err;
             }
         }
+// ---------------- PDF → KEY POINTS (SMART ORDERED MODE) ----------------
+if (conversionType === "pdf->keypoints") {
 
+    console.log("🎯 PDF → Key Points started");
 
+    try {
+        const poppler = new Poppler();
+
+        const inputPdf = files[0].path;
+        const outputDir = path.join("uploads", "tmp", jobId, "output");
+
+        fs.mkdirSync(outputDir, { recursive: true });
+
+        const textPath = path.join(outputDir, "extracted.txt");
+        const outputPath = path.join(outputDir, "keypoints.txt");
+
+        console.log("📄 Extracting text...");
+        await poppler.pdfToText(inputPdf, textPath);
+
+        const rawText = fs.readFileSync(textPath, "utf-8");
+
+        const cleanText = rawText
+            .replace(/\f/g, " ")
+            .replace(/Page\s+\d+/gi, "")
+            .replace(/\s+/g, " ")
+            .trim();
+
+        if (!cleanText || cleanText.length < 80) {
+            throw new Error("Not enough readable text");
+        }
+
+        console.log("🧠 Analyzing sentences...");
+
+        const doc = nlp.readDoc(cleanText);
+        const sentences = doc.sentences().out();
+
+        if (!sentences.length) {
+            throw new Error("No sentences detected");
+        }
+
+        // ✅ Basic stopwords
+        const stopwords = new Set([
+            "the","and","with","from","this","that","have","were",
+            "their","there","about","which","into","than","then",
+            "also","such","these","those","been","being"
+        ]);
+
+        const scored = sentences.map((sentence, index) => {
+
+            const tokens = nlp.readDoc(sentence).tokens().out();
+
+            // ✅ Filter junk / tiny sentences
+            if (
+                sentence.length < 40 ||
+                /copyright|all rights reserved|figure\s+\d|table\s+\d/i.test(sentence)
+            ) {
+                return null;
+            }
+
+            // ✅ Keyword density boost
+            const words = sentence.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
+            const keywordHits = words.filter(w => !stopwords.has(w)).length;
+
+            const score =
+                tokens.length +
+                keywordHits * 2 +          // boost meaningful words
+                sentence.length * 0.05;    // mild length bias
+
+            return {
+                text: sentence,
+                score,
+                index   // ⭐ preserve original order
+            };
+        }).filter(Boolean);
+
+        if (!scored.length) {
+            throw new Error("No meaningful sentences found");
+        }
+
+        // ✅ Pick top N by score
+        const topRanked = scored
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 8);
+
+        // ⭐ Re-sort by original order
+        const orderedKeyPoints = topRanked
+            .sort((a, b) => a.index - b.index)
+            .map(s => s.text);
+
+        const finalOutput = `
+KEY POINTS
+==========
+
+${orderedKeyPoints.map(p => `• ${p}`).join("\n\n")}
+
+----------------
+Points extracted: ${orderedKeyPoints.length}
+`;
+
+        fs.writeFileSync(outputPath, finalOutput.trim());
+
+        console.log("✅ Key Points extracted");
+
+        return { success: true, outputPath };
+
+    } catch (err) {
+        console.error("❌ Key Points FAILED:", err.message);
+        throw err;
+    }
+}
+//---------------- PDF → KEYWORDS ----------------
+if (conversionType === "pdf->keywords") {
+
+    console.log("🏷 PDF → Keywords started");
+
+    try {
+        const poppler = new Poppler();
+        const inputPdf = files[0].path;
+
+        const outputDir = path.join("uploads", "tmp", jobId, "output");
+        fs.mkdirSync(outputDir, { recursive: true });
+
+        const textPath = path.join(outputDir, "extracted.txt");
+
+        await poppler.pdfToText(inputPdf, textPath);
+        const text = fs.readFileSync(textPath, "utf-8");
+
+        const stopwords = new Set([
+            "the","and","with","from","this","that","have","were",
+            "their","there","about","which","into","than","then",
+            "also","such","these","those","been","being"
+        ]);
+
+        const words = text.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
+        const freq = {};
+
+        for (const w of words) {
+            if (!stopwords.has(w)) {
+                freq[w] = (freq[w] || 0) + 1;
+            }
+        }
+
+        const topKeywords = Object.entries(freq)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 12)
+            .map(e => e[0]);
+
+        const outputPath = path.join(outputDir, "keywords.txt");
+
+        fs.writeFileSync(
+            outputPath,
+            `TOP KEYWORDS\n============\n\n${topKeywords.map(k => `• ${k}`).join("\n")}`
+        );
+
+        console.log("✅ Keywords extracted");
+
+        return { success: true, outputPath };
+
+    } catch (err) {
+        console.error("❌ Keywords FAILED:", err.message);
+        throw err;
+    }
+}
+// // ---------------- PDF → ENTITIES (STRICT SMART MODE) ----------------
+// if (conversionType === "pdf->entities") {
+
+//     console.log("✨ PDF → Entity extraction started");
+
+//     try {
+//         const poppler = new Poppler();
+//         const inputPdf = files[0].path;
+
+//         const outputDir = path.join("uploads", "tmp", jobId, "output");
+//         fs.mkdirSync(outputDir, { recursive: true });
+
+//         const textPath = path.join(outputDir, "extracted.txt");
+
+//         console.log("📄 Extracting text...");
+//         await poppler.pdfToText(inputPdf, textPath);
+
+//         let text = fs.readFileSync(textPath, "utf-8");
+
+//         if (!text || text.length < 50) {
+//             throw new Error("Bad text extraction");
+//         }
+
+//         // ✅ STEP 1 — HARD TEXT CLEANING
+//         text = text
+//             .replace(/\f/g, " ")
+//             .replace(/Page\s+\d+/gi, "")
+//             .replace(/\n+/g, " ")
+//             .replace(/\s+/g, " ")
+//             .replace(/[^\w\s.,&-]/g, "")
+//             .trim();
+
+//         // ✅ STEP 2 — Fix ALL CAPS words
+//         text = text.replace(/\b[A-Z]{3,}\b/g, w =>
+//             w.charAt(0) + w.slice(1).toLowerCase()
+//         );
+
+//         console.log("🧪 Cleaned text sample:", text.slice(0, 150));
+
+//         console.log("🧠 Running NLP entity detection...");
+
+//         const doc = compromise(text);
+
+//         // 🧹 STRICT HUMAN NAME FILTER
+//         const isLikelyHumanName = (name) => {
+
+//             const cleaned = name.trim();
+
+//             // ❌ Reject weird characters
+//             if (/[^a-zA-Z\s]/.test(cleaned)) return false;
+
+//             const parts = cleaned.split(/\s+/);
+
+//             // ❌ Reject too short / long
+//             if (parts.length < 2 || parts.length > 5) return false;
+
+//             // ❌ Reject generic headings/phrases
+//             if (/analysis|types|recommendations|reflection|prevention|harassment|ethical|values|violated|remedies/i.test(cleaned))
+//                 return false;
+
+//             // ✅ Ensure proper capitalization
+//             if (!parts.every(p => /^[A-Z][a-z]+$/.test(p)))
+//                 return false;
+
+//             return true;
+//         };
+
+//         // 🥇 NLP-based detection
+//         let people = doc.people().out("array");
+
+//         // 🥈 Regex fallback (multi-word names)
+//         const regexNames =
+//             text.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g) || [];
+
+//         people = [...people, ...regexNames];
+
+//         // 🧹 Final cleanup
+//         people = [...new Set(people)]
+//             .map(p => p.trim())
+//             .filter(isLikelyHumanName)
+//             .slice(0, 10);
+
+//         const organizations = [...new Set(doc.organizations().out("array"))]
+//             .filter(o => o.length > 2 && o.length < 60)
+//             .slice(0, 10);
+
+//         const places = [...new Set(doc.places().out("array"))]
+//             .filter(p => p.length > 2 && p.length < 60)
+//             .slice(0, 10);
+
+//         const entities = { people, organizations, places };
+
+//         console.log("🧪 Entities detected:", entities);
+
+//         const jsonPath = path.join(outputDir, "entities.json");
+//         const txtPath = path.join(outputDir, "entities.txt");
+
+//         const prettyOutput = `
+// DOCUMENT ENTITIES
+// ================
+
+// 👤 People:
+// ${people.length ? people.map(p => `• ${p}`).join("\n") : "• None detected"}
+
+// 🏢 Organizations:
+// ${organizations.length ? organizations.map(o => `• ${o}`).join("\n") : "• None detected"}
+
+// 📍 Places:
+// ${places.length ? places.map(p => `• ${p}`).join("\n") : "• None detected"}
+// `;
+
+//         fs.writeFileSync(jsonPath, JSON.stringify(entities, null, 2));
+//         fs.writeFileSync(txtPath, prettyOutput.trim());
+
+//         console.log("✅ Entity extraction completed");
+
+//         return {
+//             success: true,
+//             output: { json: jsonPath, txt: txtPath }
+//         };
+
+//     } catch (err) {
+//         console.error("❌ Entities FAILED:", err.message);
+//         throw err;
+//     }
+// }
         console.log("❌ Unsupported conversion");
         return { success: false };
     },

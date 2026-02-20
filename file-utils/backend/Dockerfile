@@ -1,6 +1,11 @@
 FROM node:20
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV NODE_ENV=production
+
+ENV XENOVA_CACHE_DIR=/app/model_cache
+ENV TRANSFORMERS_CACHE=/app/model_cache
+
 RUN apt-get update && apt-get install -y \
     poppler-utils \
     ghostscript \
@@ -9,12 +14,18 @@ RUN apt-get update && apt-get install -y \
     qpdf \
     mupdf-tools \
     && rm -rf /var/lib/apt/lists/*
-    
+
 WORKDIR /app
 
 COPY backend/package*.json ./
-RUN npm install
+
+# ✅ Allow scripts (sharp fix)
+RUN npm install --omit=dev --omit=optional
 
 COPY backend ./
+
+RUN mkdir -p /app/model_cache && chmod -R 777 /app/model_cache
+
+EXPOSE 4000
 
 CMD ["node", "src/server.js"]
