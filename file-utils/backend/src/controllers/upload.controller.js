@@ -2,6 +2,7 @@ import { conversionQueue } from "../queues/conversion.queue.js";
 import { getUserStats } from "../services/stats.service.js";
 import { enforceLimits } from "../services/limits.service.js";
 import { incrementJobStats, incrementOCRStats } from "../services/stats-update.service.js";
+import { supabase } from "../config/supabase.js";
 
 const OCR_JOB_TYPES = [
   "pdf->ocr",
@@ -38,13 +39,27 @@ export const uploadFiles = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1️ Get current stats
+    // 1️⃣ Get current stats
     const stats = await getUserStats(userId);
 
-    // 2️ Enforce daily limits
+    // 2️⃣ Enforce daily limits
     enforceLimits(stats);
 
-    // 3️ Add job to queue
+    // 3️⃣ Insert job into DB (queued)
+    const { error: insertError } = await supabase
+      .from("jobs")
+      .insert({
+        id: jobId,
+        user_id: userId,
+        conversion_type: conversionType,
+        status: "queued",
+      });
+
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+
+    // 4️⃣ Add job to queue
     await conversionQueue.add(
       "convert",
       {
@@ -63,15 +78,20 @@ export const uploadFiles = async (req, res) => {
       },
       {
         jobId,
-        removeOnComplete: false,
-        removeOnFail: false,
+        removeOnComplete: {
+          age: 3600,   // auto remove after 1 hour
+          count: 1000,
+        },
+        removeOnFail: {
+          age: 86400,  // keep failed for 1 day
+        },
       }
     );
 
-    // 4️ Increment total jobs
+    // 5️⃣ Increment total jobs
     await incrementJobStats(userId);
 
-    // 5️ Increment OCR usage if applicable
+    // 6️⃣ Increment OCR usage if applicable
     if (OCR_JOB_TYPES.includes(conversionType)) {
       await incrementOCRStats(userId);
     }

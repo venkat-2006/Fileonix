@@ -1,5 +1,7 @@
 import "./config/env.js";          // Load env FIRST
 import app from "./app.js";
+import cron from "node-cron";
+import { cleanupExpiredFiles } from "./services/cleanup.service.js";
 
 import uploadRoutes from "./routes/upload.routes.js";
 import jobRoutes from "./routes/job.routes.js";
@@ -16,6 +18,11 @@ app.use("/api/jobs", jobRoutes);
 app.use("/api", testRoutes);
 app.use("/api", userRoutes);
 // app.use("/api/repair", repairRoutes);
+
+cron.schedule("*/30 * * * *", async () => {
+  console.log("🧹 Running file cleanup...");
+  await cleanupExpiredFiles();
+});
 
 // Start server
 app.listen(PORT, () => {

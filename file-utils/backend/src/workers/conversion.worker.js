@@ -8,6 +8,7 @@ import PptxGenJS from "pptxgenjs";
 import { Document, Packer, Paragraph, ImageRun, TextRun, AlignmentType, BorderStyle, Table, TableRow, TableCell, WidthType } from "docx";
 import { exec } from "child_process";
 import { extractTextFromImage } from "../utils/ocr.js";
+import { supabase } from "../config/supabase.js";
 
 import winkNLP from "wink-nlp";
 import winkModel from "wink-eng-lite-web-model";
@@ -2495,4 +2496,39 @@ Generated: ${new Date().toLocaleString()}
 );
 
 console.log("🚀 Conversion worker started");
+
+worker.on("completed", async (job) => {
+  try {
+    console.log(`✅ Job completed: ${job.data.jobId}`);
+
+    await supabase
+      .from("jobs")
+      .update({
+        status: "completed",
+        completed_at: new Date(),
+      })
+      .eq("id", job.data.jobId);
+
+  } catch (err) {
+    console.error("❌ Failed updating completed status:", err.message);
+  }
+});
+
+worker.on("failed", async (job, err) => {
+  try {
+    console.log(`❌ Job failed: ${job?.data?.jobId}`);
+
+    await supabase
+      .from("jobs")
+      .update({
+        status: "failed",
+        failed_at: new Date(),
+        error_message: err?.message || "Unknown error",
+      })
+      .eq("id", job.data.jobId);
+
+  } catch (updateErr) {
+    console.error("❌ Failed updating failed status:", updateErr.message);
+  }
+});
 

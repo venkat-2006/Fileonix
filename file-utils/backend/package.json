@@ -20,6 +20,7 @@
     "ioredis": "^5.9.3",
     "keyword-extractor": "^0.0.28",
     "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
     "node-poppler": "^9.1.1",
     "node-tesseract-ocr": "^2.2.1",
     "pdf-lib": "^1.17.1",
