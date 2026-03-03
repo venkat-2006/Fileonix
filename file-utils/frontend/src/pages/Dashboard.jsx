@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "../lib/api"; // your axios instance
+import api from "../lib/api";
 import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
@@ -10,64 +10,83 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-  const fetchData = async () => {
-    try {
-      const statsRes = await api.get("/users/me/stats");
-      const jobsRes = await api.get("/jobs/me");
+    const fetchData = async () => {
+      try {
+        const statsRes = await api.get("/users/me/stats");
+        const jobsRes = await api.get("/jobs/me");
 
-      setStats(statsRes.data);
-      setJobs(jobsRes.data || []);
+        setStats(statsRes.data);
+        setJobs(jobsRes.data || []);
+      } catch (err) {
+        console.error("Dashboard error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const handleDownload = async (jobId) => {
+    try {
+      const response = await api.get(`/jobs/${jobId}/zip`, {
+        responseType: "blob",
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "results.zip");
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     } catch (err) {
-      console.error("Dashboard error:", err);
-    } finally {
-      setLoading(false);
+      alert("Download failed");
     }
   };
-
-  fetchData();
-}, []);
 
   if (loading) {
     return <div className="text-center">Loading dashboard...</div>;
   }
 
   return (
-  <div className="space-y-10">
+    <div className="space-y-10">
 
-    {/* Lifetime Stats */}
-    <div className="bg-white p-6 rounded-xl shadow-sm">
-      <h2 className="text-lg text-gray-500 mb-2">
-        Lifetime Usage
-      </h2>
+      {/* Lifetime Stats */}
+      <div className="bg-white p-6 rounded-xl shadow-sm">
+        <h2 className="text-lg text-gray-500 mb-2">
+          Lifetime Usage
+        </h2>
 
-      <p className="text-3xl font-bold text-blue-600">
-        {stats?.jobsTotal ?? 0}
-      </p>
+        <p className="text-3xl font-bold text-blue-600">
+          {stats?.jobsTotal ?? 0}
+        </p>
 
-      <p className="text-sm text-gray-400">
-        Total jobs processed
-      </p>
-    </div>
+        <p className="text-sm text-gray-400">
+          Total jobs processed
+        </p>
+      </div>
 
-    {/* Daily Usage Cards */}
-    <div className="grid md:grid-cols-3 gap-6">
-      <UsageCard
-        title="Jobs Today"
-        used={stats?.jobsToday ?? 0}
-        total={10}
-      />
-      <UsageCard
-        title="OCR Today"
-        used={stats?.ocrToday ?? 0}
-        total={5}
-      />
-      <UsageCard
-        title="Remaining Jobs"
-        used={stats?.remainingJobs ?? 0}
-        total={10}
-        reverse
-      />
-    </div>
+      {/* Daily Usage */}
+      <div className="grid md:grid-cols-3 gap-6">
+        <UsageCard
+          title="Jobs Today"
+          used={stats?.jobsToday ?? 0}
+          total={10}
+        />
+        <UsageCard
+          title="OCR Today"
+          used={stats?.ocrToday ?? 0}
+          total={5}
+        />
+        <UsageCard
+          title="Remaining Jobs"
+          used={stats?.remainingJobs ?? 0}
+          total={10}
+          reverse
+        />
+      </div>
+
       {/* Upload CTA */}
       <div className="text-center">
         <button
@@ -85,16 +104,16 @@ export default function Dashboard() {
         {jobs.length === 0 ? (
           <EmptyState />
         ) : (
-          <JobTable jobs={jobs} />
+          <JobTable jobs={jobs} onDownload={handleDownload} />
         )}
       </div>
-
     </div>
   );
 }
 
 function UsageCard({ title, used, total, reverse = false }) {
-  const percentage = Math.min((used / total) * 100, 100);
+  const percentage =
+    total > 0 ? Math.min((used / total) * 100, 100) : 0;
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-sm">
@@ -116,7 +135,7 @@ function UsageCard({ title, used, total, reverse = false }) {
   );
 }
 
-function JobTable({ jobs }) {
+function JobTable({ jobs, onDownload }) {
   return (
     <div className="bg-white rounded-xl shadow-sm overflow-hidden">
       <table className="w-full text-left">
@@ -131,8 +150,8 @@ function JobTable({ jobs }) {
 
         <tbody>
           {jobs.map((job) => (
-            <tr key={job.job_id} className="border-t">
-              <td className="p-4">{job.type}</td>
+            <tr key={job.id} className="border-t">
+              <td className="p-4">{job.conversion_type}</td>
               <td className="p-4">
                 <StatusBadge status={job.status} />
               </td>
@@ -141,12 +160,12 @@ function JobTable({ jobs }) {
               </td>
               <td className="p-4">
                 {job.status === "completed" ? (
-                  <a
-                    href={job.downloadUrl}
+                  <button
+                    onClick={() => onDownload(job.id)}
                     className="text-blue-600 hover:underline"
                   >
                     Download
-                  </a>
+                  </button>
                 ) : (
                   "-"
                 )}
@@ -158,6 +177,7 @@ function JobTable({ jobs }) {
     </div>
   );
 }
+
 function StatusBadge({ status }) {
   const colors = {
     completed: "bg-green-100 text-green-700",

@@ -4,7 +4,7 @@ import { supabase } from "./lib/supabase";
 
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
-// import Upload from "./pages/Upload";
+import Upload from "./pages/Upload";
 import Auth from "./pages/Auth";
 import AppLayout from "./layout/AppLayout";
 
@@ -75,7 +75,7 @@ export default function App() {
         />
 
         {/* Protected Upload */}
-        {/* <Route
+        <Route
           path="/upload"
           element={
             session ? (
@@ -84,7 +84,7 @@ export default function App() {
               <Navigate to="/auth" replace />
             )
           }
-        /> */}
+        />
       </Routes>
     </AppLayout>
   );
