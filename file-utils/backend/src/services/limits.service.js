@@ -1,4 +1,11 @@
-export const enforceLimits = (stats) => {
+const OCR_JOB_TYPES = [
+  "pdf->ocr",
+  "image->txt",
+  "image->searchable-pdf",
+  "pdf->searchable-pdf"
+];
+
+export const enforceLimits = (stats, conversionType) => {
   const MAX_JOBS_PER_DAY = 10;
   const MAX_OCR_PER_DAY = 5;
 
@@ -6,7 +13,10 @@ export const enforceLimits = (stats) => {
     throw new Error("❌ Daily job limit reached");
   }
 
-  if (stats.ocr_today >= MAX_OCR_PER_DAY) {
+  if (
+    OCR_JOB_TYPES.includes(conversionType) &&
+    stats.ocr_today >= MAX_OCR_PER_DAY
+  ) {
     throw new Error("❌ Daily OCR limit reached");
   }
 };

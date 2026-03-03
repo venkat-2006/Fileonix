@@ -43,7 +43,7 @@ export const uploadFiles = async (req, res) => {
     const stats = await getUserStats(userId);
 
     // 2️⃣ Enforce daily limits
-    enforceLimits(stats);
+    enforceLimits(stats, conversionType);
 
     // 3️⃣ Insert job into DB (queued)
     const { error: insertError } = await supabase

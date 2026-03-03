@@ -16,6 +16,7 @@
     "docx": "^9.5.2",
     "dotenv": "^16.4.0",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.2.1",
     "form-data": "^4.0.5",
     "ioredis": "^5.9.3",
     "keyword-extractor": "^0.0.28",
