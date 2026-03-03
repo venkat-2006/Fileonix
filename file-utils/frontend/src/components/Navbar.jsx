@@ -16,7 +16,7 @@ export default function Navbar({ session }) {
     };
 
     return (
-        <nav className="w-full bg-white shadow-sm px-6 py-4 flex justify-between items-center">
+        <nav className="sticky top-0 bg-white/80 backdrop-blur-md shadow-sm px-6 py-4 flex justify-between items-center z-50">
             <div
                 className="text-xl font-bold text-blue-600 cursor-pointer"
                 onClick={() => navigate("/")}

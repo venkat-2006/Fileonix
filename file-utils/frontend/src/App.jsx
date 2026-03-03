@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard";
 import Upload from "./pages/Upload";
 import Auth from "./pages/Auth";
 import AppLayout from "./layout/AppLayout";
+import { Toaster } from "react-hot-toast";
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -36,6 +37,7 @@ export default function App() {
   }
 
   return (
+    <><Toaster position="top-right" />
     <AppLayout session={session}>
       <Routes>
         {/* Landing */}
@@ -87,5 +89,6 @@ export default function App() {
         />
       </Routes>
     </AppLayout>
+    </>
   );
 }

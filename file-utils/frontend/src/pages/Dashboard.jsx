@@ -44,11 +44,15 @@ export default function Dashboard() {
       alert("Download failed");
     }
   };
-
-  if (loading) {
-    return <div className="text-center">Loading dashboard...</div>;
-  }
-
+if (loading) {
+  return (
+    <div className="animate-pulse space-y-6">
+      <div className="h-24 bg-gray-200 rounded-xl"></div>
+      <div className="h-24 bg-gray-200 rounded-xl"></div>
+      <div className="h-64 bg-gray-200 rounded-xl"></div>
+    </div>
+  );
+}
   return (
     <div className="space-y-10">
 
