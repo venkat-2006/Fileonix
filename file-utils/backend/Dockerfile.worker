@@ -6,7 +6,13 @@ ENV NODE_ENV=production
 ENV XENOVA_CACHE_DIR=/app/model_cache
 ENV TRANSFORMERS_CACHE=/app/model_cache
 
+# ✅ Install ALL required build + runtime dependencies
 RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3 \
+    make \
+    g++ \
+    pkg-config \
     poppler-utils \
     ghostscript \
     tesseract-ocr \
@@ -20,8 +26,8 @@ WORKDIR /app
 
 COPY backend/package*.json ./
 
-# ✅ Allow scripts (sharp fix)
-RUN npm install --omit=dev --omit=optional
+# ✅ Use npm ci
+RUN npm ci --omit=dev
 
 COPY backend ./
 

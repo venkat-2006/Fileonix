@@ -2,6 +2,7 @@ import "./config/env.js";          // Load env FIRST
 import app from "./app.js";
 import cron from "node-cron";
 import { cleanupExpiredFiles } from "./services/cleanup.service.js";
+import helmet from "helmet";
 
 import uploadRoutes from "./routes/upload.routes.js";
 import jobRoutes from "./routes/job.routes.js";
@@ -12,6 +13,8 @@ import userRoutes from "./routes/user.routes.js"
 const PORT = process.env.PORT || 4000;
 
 // Routes
+app.use(helmet());
+
 app.use("/health", healthRouter);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/jobs", jobRoutes);
