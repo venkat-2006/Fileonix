@@ -1,8 +1,12 @@
 import { conversionQueue } from "../queues/conversion.queue.js";
 import { getUserStats } from "../services/stats.service.js";
 import { enforceLimits } from "../services/limits.service.js";
-import { incrementJobStats, incrementOCRStats } from "../services/stats-update.service.js";
+import {
+  incrementJobStats,
+  incrementOCRStats
+} from "../services/stats-update.service.js";
 import { supabase } from "../config/supabase.js";
+import { validateFiles } from "../utils/validateFiles.js";
 
 const OCR_JOB_TYPES = [
   "pdf->ocr",
@@ -12,6 +16,7 @@ const OCR_JOB_TYPES = [
 ];
 
 export const uploadFiles = async (req, res) => {
+
   const jobId = req.jobId;
 
   const {
@@ -23,43 +28,71 @@ export const uploadFiles = async (req, res) => {
     pages,
     language,
     expiryMinutes,
-    expiryHours,
+    expiryHours
   } = req.body;
 
-  if (!conversionType) {
-    return res.status(400).json({ error: "conversionType required" });
-  }
-
-  if (conversionType === "pdf->similarity" && req.files.length !== 2) {
-    return res.status(400).json({
-      error: "Exactly 2 PDFs required for similarity comparison",
-    });
-  }
-
   try {
+
+    if (!conversionType) {
+      return res.status(400).json({
+        error: "conversionType required"
+      });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        error: "No files uploaded"
+      });
+    }
+
+    // Validate conversion + extensions
+    validateFiles(req.files, conversionType);
+
+    // Special rule: similarity requires 2 PDFs
+    if (
+      conversionType === "pdf->similarity" &&
+      req.files.length !== 2
+    ) {
+      return res.status(400).json({
+        error: "Exactly 2 PDFs required for similarity comparison"
+      });
+    }
+
+    // Special rule: merge requires at least 2 PDFs
+    if (
+      conversionType === "pdf->merge" &&
+      req.files.length < 2
+    ) {
+      return res.status(400).json({
+        error: "At least 2 PDFs required for merge"
+      });
+    }
+
     const userId = req.user.id;
 
-    // 1️⃣ Get current stats
+    /* ---------------- USER LIMITS ---------------- */
+
     const stats = await getUserStats(userId);
 
-    // 2️⃣ Enforce daily limits
     enforceLimits(stats, conversionType);
 
-    // 3️⃣ Insert job into DB (queued)
+    /* ---------------- CREATE JOB ---------------- */
+
     const { error: insertError } = await supabase
       .from("jobs")
       .insert({
         id: jobId,
         user_id: userId,
         conversion_type: conversionType,
-        status: "queued",
+        status: "queued"
       });
 
     if (insertError) {
       throw new Error(insertError.message);
     }
 
-    // 4️⃣ Add job to queue
+    /* ---------------- QUEUE JOB ---------------- */
+
     await conversionQueue.add(
       "convert",
       {
@@ -74,36 +107,43 @@ export const uploadFiles = async (req, res) => {
         language: language || "eng",
         expiryMinutes,
         expiryHours,
-        files: req.files,
+        files: req.files
       },
       {
         jobId,
         removeOnComplete: {
-          age: 3600,   // auto remove after 1 hour
-          count: 1000,
+          age: 3600,
+          count: 1000
         },
         removeOnFail: {
-          age: 86400,  // keep failed for 1 day
-        },
+          age: 86400
+        }
       }
     );
 
-    // 5️⃣ Increment total jobs
+    /* ---------------- UPDATE STATS ---------------- */
+
     await incrementJobStats(userId);
 
-    // 6️⃣ Increment OCR usage if applicable
     if (OCR_JOB_TYPES.includes(conversionType)) {
       await incrementOCRStats(userId);
     }
 
+    /* ---------------- RESPONSE ---------------- */
+
     return res.json({
       jobId,
-      status: "queued",
+      status: "queued"
     });
 
   } catch (err) {
+
+    console.error("Upload error:", err.message);
+
     return res.status(400).json({
-      error: err.message,
+      error: err.message
     });
+
   }
+
 };

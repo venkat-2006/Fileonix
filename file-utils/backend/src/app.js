@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import morgan from "morgan";
 
 import uploadRoutes from "./routes/upload.routes.js";
 import jobRoutes from "./routes/job.routes.js";
@@ -22,6 +23,14 @@ app.use(helmet());
 app.use(cors({
   origin: "*", // later restrict to frontend
 }));
+
+/* ---------------- REQUEST LOGGING ---------------- */
+
+if (process.env.NODE_ENV === "production") {
+  app.use(morgan("combined"));
+} else {
+  app.use(morgan("dev"));
+}
 
 /* ---------------- BODY PARSER ---------------- */
 

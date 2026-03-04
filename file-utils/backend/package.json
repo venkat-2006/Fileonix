@@ -22,6 +22,7 @@
     "helmet": "^8.1.0",
     "ioredis": "^5.9.3",
     "keyword-extractor": "^0.0.28",
+    "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "node-poppler": "^9.1.1",
