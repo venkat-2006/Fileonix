@@ -3,15 +3,27 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 
+import uploadRoutes from "./routes/upload.routes.js";
+import jobRoutes from "./routes/job.routes.js";
+import healthRouter from "./routes/health.routes.js";
+import testRoutes from "./routes/test.js";
+import userRoutes from "./routes/user.routes.js";
+
 const app = express();
 
-// Trust proxy (important for rate limit accuracy behind nginx / cloudflare)
+/* ---------------- TRUST PROXY ---------------- */
+
 app.set("trust proxy", 1);
 
-/* ---------------- SECURITY MIDDLEWARE ---------------- */
+/* ---------------- SECURITY ---------------- */
 
 app.use(helmet());
-app.use(cors());
+
+app.use(cors({
+  origin: "*", // later restrict to frontend
+}));
+
+/* ---------------- BODY PARSER ---------------- */
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -19,48 +31,43 @@ app.use(express.urlencoded({ extended: true }));
 /* ---------------- GLOBAL RATE LIMIT ---------------- */
 
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // 200 requests per IP
+  windowMs: 15 * 60 * 1000,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    error: "Too many requests. Please try again later."
+    error: "Too many requests. Try again later."
   }
 });
 
-// Apply to API only
 app.use("/api", globalLimiter);
 
 /* ---------------- UPLOAD RATE LIMIT ---------------- */
 
 const uploadLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 30, // 30 uploads per IP
+  windowMs: 10 * 60 * 1000,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    error: "Upload rate limit exceeded. Try again later."
+    error: "Upload rate limit exceeded."
   }
 });
 
-// Protect upload route
 app.use("/api/upload", uploadLimiter);
 
-/* ---------------- OCR SUPER LIMIT ---------------- */
+/* ---------------- OCR LIMIT ---------------- */
 
 const ocrLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 10, // Max 10 OCR jobs per 10 minutes per IP
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    error: "OCR rate limit exceeded. Try again later."
+    error: "OCR rate limit exceeded."
   }
 });
 
-/*
-  Apply OCR limiter only when conversionType is OCR
-*/
 app.use("/api/upload", (req, res, next) => {
 
   const OCR_TYPES = [
@@ -75,6 +82,29 @@ app.use("/api/upload", (req, res, next) => {
   }
 
   next();
+});
+
+/* ---------------- ROUTES ---------------- */
+
+app.use("/health", healthRouter);
+app.use("/api/upload", uploadRoutes);
+app.use("/api/jobs", jobRoutes);
+app.use("/api", testRoutes);
+app.use("/api", userRoutes);
+
+/* ---------------- ERROR HANDLER ---------------- */
+
+app.use((err, req, res, next) => {
+
+  console.error("Error:", err.message);
+
+  res.status(500).json({
+    error:
+      process.env.NODE_ENV === "production"
+        ? "Something went wrong"
+        : err.message
+  });
+
 });
 
 export default app;
