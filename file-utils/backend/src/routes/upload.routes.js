@@ -10,17 +10,45 @@ router.post(
   "/",
   verifyAuth,
 
-  // Generate jobId before multer so files go into correct folder
+  // Generate jobId before upload so multer stores files correctly
   (req, res, next) => {
     req.jobId = uuidv4();
     next();
   },
 
-  upload.array("files"),
+  // Wrap multer to catch its errors properly
+  (req, res, next) => {
+    upload.array("files")(req, res, function (err) {
+      if (err) {
 
-  // Verify file signatures (security layer)
+        // Handle file size errors
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            error: "File too large"
+          });
+        }
+
+        // Handle file count errors
+        if (err.code === "LIMIT_FILE_COUNT") {
+          return res.status(400).json({
+            error: "Too many files uploaded"
+          });
+        }
+
+        // Handle extension/mimetype errors
+        return res.status(400).json({
+          error: err.message
+        });
+      }
+
+      next();
+    });
+  },
+
+  // Verify file signatures (magic byte validation)
   verifyUploadedFiles,
 
+  // Controller
   uploadFiles
 );
 

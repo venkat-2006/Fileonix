@@ -15,16 +15,20 @@ export const cleanupExpiredFiles = async () => {
 
       try {
         const stats = fs.statSync(folderPath);
-        const age = Date.now() - stats.mtimeMs;
+
+        // CHANGE HERE
+        const age = Date.now() - stats.birthtimeMs;
 
         if (age > FILE_TTL) {
           fs.rmSync(folderPath, { recursive: true, force: true });
           console.log("🗑 Deleted expired folder:", folder);
         }
+
       } catch (err) {
         console.error("Folder cleanup error:", err.message);
       }
     }
+
   } catch (err) {
     console.error("Cleanup service error:", err.message);
   }

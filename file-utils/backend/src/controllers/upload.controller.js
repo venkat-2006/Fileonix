@@ -6,7 +6,7 @@ import {
   incrementOCRStats
 } from "../services/stats-update.service.js";
 import { supabase } from "../config/supabase.js";
-import { validateFiles } from "../utils/validateFiles.js";
+import { validateFiles } from "../utils/fileValidation.js";
 
 const OCR_JOB_TYPES = [
   "pdf->ocr",
