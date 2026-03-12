@@ -3,3 +3,8 @@ npm-debug.log
 .git
 .gitignore
 frontend/node_modules
+
+.env
+uploads
+tmp
+logs

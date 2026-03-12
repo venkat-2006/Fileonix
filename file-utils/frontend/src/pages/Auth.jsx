@@ -1,8 +1,8 @@
 import { supabase } from "../lib/supabase";
-import { useNavigate } from "react-router-dom";
+// import { useNavigate } from "react-router-dom";
 
 export default function Auth() {
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
 
   const handleGoogleLogin = async () => {
     await supabase.auth.signInWithOAuth({
