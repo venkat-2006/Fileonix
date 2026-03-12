@@ -4,130 +4,306 @@ import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
 export default function Upload() {
-    const [file, setFile] = useState(null);
-    const [conversion, setConversion] = useState("image->pdf");
-    const [stats, setStats] = useState(null);
-    const [progress, setProgress] = useState(0);
-    const [loading, setLoading] = useState(false);
 
-    const navigate = useNavigate();
+  const [files,setFiles] = useState([]);
+  const [conversion,setConversion] = useState("image->pdf");
+  const [stats,setStats] = useState(null);
+  const [progress,setProgress] = useState(0);
+  const [loading,setLoading] = useState(false);
 
-    useEffect(() => {
-        const fetchStats = async () => {
-            const res = await api.get("/users/me/stats");
-            setStats(res.data);
-        };
+  const navigate = useNavigate();
 
-        fetchStats();
-    }, []);
+  const NORMAL_LIMIT = 10;
+  const OCR_LIMIT = 5;
 
-    const handleUpload = async () => {
-        if (!file) return;
+  useEffect(() => {
 
-        const formData = new FormData();
-        formData.append("files", file);
-        formData.append("conversionType", conversion);
-
-        try {
-            setLoading(true);
-
-            await api.post("/upload", formData, {
-                onUploadProgress: (event) => {
-                    const percent = Math.round(
-                        (event.loaded * 100) / event.total
-                    );
-                    setProgress(percent);
-                },
-            });
-
-            toast.success("Job queued successfully 🚀");
-            navigate("/dashboard");
-        } catch (err) {
-            alert(err.response?.data?.error || "Upload failed");
-        } finally {
-            setLoading(false);
-            setProgress(0);
-        }
+    const fetchStats = async () => {
+      const res = await api.get("/users/me/stats");
+      setStats(res.data);
     };
 
-    const remaining = stats?.remainingJobs || 0;
+    fetchStats();
 
-    return (
-        <div className="space-y-10">
+  },[]);
 
-            {/* Quota Display */}
-            {stats && (
-                <div className="bg-white p-6 rounded-xl shadow-sm">
-                    <p className="text-gray-500">
-                        You have <span className="font-bold">{remaining}</span> jobs remaining today.
-                    </p>
-                </div>
-            )}
+  const jobsToday = stats?.jobsToday ?? 0;
+  const ocrToday = stats?.ocrToday ?? 0;
 
-            {/* Drag & Drop Box */}
-            <div
-                className="border-2 border-dashed border-gray-300 rounded-xl p-16 text-center bg-white hover:border-blue-500 transition cursor-pointer"
-                onClick={() => document.getElementById("fileInput").click()}
-            >
-                <input
-                    id="fileInput"
-                    type="file"
-                    hidden
-                    onChange={(e) => setFile(e.target.files[0])}
-                />
+  const normalJobsToday = Math.max(jobsToday - ocrToday,0);
 
-                <p className="text-lg text-gray-600">
-                    Drop file here or click to browse
-                </p>
+  const normalLeft = Math.max(NORMAL_LIMIT - normalJobsToday,0);
+  const ocrLeft = Math.max(OCR_LIMIT - ocrToday,0);
 
-                {file && (
-                    <p className="mt-4 text-blue-600 font-medium">
-                        Selected: {file.name}
-                    </p>
-                )}
-            </div>
+  const OCR_TYPES = [
+    "pdf->ocr",
+    "image->txt",
+    "image->searchable-pdf",
+    "pdf->searchable-pdf"
+  ];
 
-            {/* Conversion Selector */}
-            <div className="bg-white p-6 rounded-xl shadow-sm">
-                <label className="block text-gray-500 mb-2">
-                    Conversion Type
-                </label>
+  const isOCR = OCR_TYPES.includes(conversion);
 
-                <select
-                    value={conversion}
-                    onChange={(e) => setConversion(e.target.value)}
-                    className="w-full border p-3 rounded-lg"
-                >
-                    <option value="image->pdf">Image → PDF</option>
-                    <option value="pdf->images">PDF → Images</option>
-                    <option value="pdf->ocr">PDF → OCR</option>
-                </select>
-            </div>
+  const uploadDisabled =
+    (files.length === 0 && conversion !== "file->expiry") ||
+    (isOCR ? ocrLeft === 0 : normalLeft === 0) ||
+    loading;
 
-            {/* Upload Button */}
-            <div className="text-center">
-                <button
-                    onClick={handleUpload}
-                    disabled={!file || remaining === 0 || loading}
-                    className={`px-8 py-4 rounded-lg text-white ${remaining === 0
-                            ? "bg-gray-400"
-                            : "bg-blue-600 hover:bg-blue-700"
-                        } transition`}
-                >
-                    {loading ? "Uploading..." : "Start Conversion"}
-                </button>
-            </div>
+  const handleUpload = async () => {
 
-            {/* Progress Bar */}
-            {loading && (
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div
-                        className="bg-blue-600 h-3 rounded-full transition-all"
-                        style={{ width: `${progress}%` }}
-                    />
-                </div>
-            )}
+    if(files.length === 0 && conversion !== "file->expiry") return;
+
+    const formData = new FormData();
+
+    files.forEach(f => formData.append("files",f));
+
+    formData.append("conversionType",conversion);
+
+    try {
+
+      setLoading(true);
+
+      await api.post("/upload",formData,{
+        onUploadProgress:(event)=>{
+          const percent = Math.round((event.loaded*100)/event.total);
+          setProgress(percent);
+        }
+      });
+
+      toast.success("Job queued successfully 🚀");
+
+      navigate("/dashboard");
+
+    } catch(err){
+
+      toast.error(err.response?.data?.error || "Upload failed");
+
+    } finally{
+
+      setLoading(false);
+      setProgress(0);
+
+    }
+
+  };
+
+  const sections = [
+
+    {
+      title:"Image Tools",
+      tools:[
+        ["image->pdf","Image → PDF"],
+        ["image->docx","Image → DOCX"],
+        ["image->pptx","Image → PPTX"]
+      ]
+    },
+
+    {
+      title:"OCR Tools (Limited)",
+      tools:[
+        ["image->txt","Image → Text (OCR)"],
+        ["image->searchable-pdf","Image → Searchable PDF"],
+        ["pdf->ocr","PDF → OCR"],
+        ["pdf->searchable-pdf","PDF → Searchable PDF"]
+      ]
+    },
+
+    {
+      title:"Text Tools",
+      tools:[
+        ["txt->pdf","Text → PDF"],
+        ["txt->docx","Text → DOCX"]
+      ]
+    },
+
+    {
+      title:"PDF Conversion",
+      tools:[
+        ["pdf->txt","PDF → Text"],
+        ["pdf->docx","PDF → DOCX"],
+        ["pdf->html","PDF → HTML"],
+        ["pdf->render-images","PDF → Images"],
+        ["pdf->extract-images","Extract Images"]
+      ]
+    },
+
+    {
+      title:"PDF Editing",
+      tools:[
+        ["pdf->merge","Merge PDFs"],
+        ["pdf->split","Split PDF"],
+        ["pdf->compress","Compress PDF"],
+        ["pdf->rotate","Rotate PDF"],
+        ["pdf->reorder","Reorder Pages"],
+        ["pdf->delete","Delete Pages"],
+        ["pdf->extract","Extract Pages"]
+      ]
+    },
+
+    {
+      title:"PDF Security",
+      tools:[
+        ["pdf->protect","Protect PDF"],
+        ["pdf->unlock","Unlock PDF"],
+        ["pdf->watermark","Add Watermark"]
+      ]
+    },
+
+    {
+      title:"AI / NLP Tools",
+      tools:[
+        ["pdf->keypoints","Extract Key Points"],
+        ["pdf->keywords","Extract Keywords"],
+        ["pdf->similarity","Compare PDFs"]
+      ]
+    },
+
+    {
+      title:"PDF Utilities",
+      tools:[
+        ["pdf->repair","Repair PDF"],
+        ["pdf->grayscale","Grayscale PDF"],
+        ["pdf->flatten","Flatten PDF"],
+        ["pdf->metadata","Extract Metadata"],
+        ["pdf->remove-blank","Remove Blank Pages"]
+      ]
+    },
+
+    {
+      title:"System Tools",
+      tools:[
+        ["file->expiry","Self-Destruct File"]
+      ]
+    }
+
+  ];
+
+  return(
+
+    <div className="space-y-10">
+
+      {stats && (
+
+        <div className="grid md:grid-cols-2 gap-6">
+
+          <QuotaCard title="Normal Jobs Left" value={normalLeft} limit={NORMAL_LIMIT}/>
+
+          <QuotaCard title="OCR Jobs Left" value={ocrLeft} limit={OCR_LIMIT}/>
 
         </div>
-    );
+
+      )}
+
+      <div className="flex gap-6">
+
+        <div
+          className="flex-1 border-2 border-dashed border-gray-300 rounded-xl p-12 text-center bg-white hover:border-blue-500 transition cursor-pointer"
+          onClick={()=>document.getElementById("fileInput").click()}
+        >
+
+          <input
+            id="fileInput"
+            type="file"
+            multiple
+            hidden
+            onChange={(e)=>setFiles(Array.from(e.target.files))}
+          />
+
+          <p className="text-lg text-gray-600">
+            Drop files here or click to browse
+          </p>
+
+          {files.length>0 && (
+
+            <div className="mt-4 text-blue-600 font-medium">
+
+              {files.map(f=>(
+                <p key={f.name}>{f.name}</p>
+              ))}
+
+            </div>
+
+          )}
+
+        </div>
+
+        <button
+          onClick={handleUpload}
+          disabled={uploadDisabled}
+          className={`px-10 py-6 rounded-xl text-white text-lg transition ${
+            uploadDisabled
+            ? "bg-gray-400 cursor-not-allowed"
+            : "bg-blue-600 hover:bg-blue-700"
+          }`}
+        >
+          {loading ? "Uploading..." : "Upload"}
+        </button>
+
+      </div>
+
+      {sections.map(section => (
+
+        <div key={section.title} className="bg-white p-6 rounded-xl shadow-sm border">
+
+          <h2 className="text-xl font-semibold mb-4">
+            {section.title}
+          </h2>
+
+          <div className="grid md:grid-cols-3 gap-4">
+
+            {section.tools.map(([key,label])=>(
+              <button
+                key={key}
+                onClick={()=>setConversion(key)}
+                className={`p-4 rounded-lg border text-left transition ${
+                  conversion === key
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "hover:bg-gray-50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+
+          </div>
+
+        </div>
+
+      ))}
+
+      {loading && (
+
+        <div className="w-full bg-gray-200 rounded-full h-3">
+
+          <div
+            className="bg-blue-600 h-3 rounded-full transition-all"
+            style={{width:`${progress}%`}}
+          />
+
+        </div>
+
+      )}
+
+    </div>
+
+  );
+
+}
+
+function QuotaCard({title,value,limit}){
+
+  return(
+
+    <div className="bg-white p-6 rounded-xl shadow-sm border">
+
+      <h3 className="text-gray-500 mb-2">{title}</h3>
+
+      <p className="text-3xl font-bold text-blue-600">{value}</p>
+
+      <p className="text-sm text-gray-400">Limit {limit}</p>
+
+    </div>
+
+  );
+
 }

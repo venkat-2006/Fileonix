@@ -259,59 +259,57 @@ function JobTable({ jobs, onDownload }) {
 
           {jobs.map(job => {
 
-            // const createdTime = new Date(job.created_at);
-            // const now = new Date();
+  const DOWNLOAD_TTL = 2 * 60 * 60 * 1000;
 
-            // const ageMs = now - createdTime;
+  // Force UTC parsing
+  const createdDate = new Date(job.created_at + "Z");
 
-            // const expired = ageMs > 2 * 60 * 60 * 1000;
-            const DOWNLOAD_TTL = 2 * 60 * 60 * 1000;
-            const created = new Date(job.created_at + "Z").getTime();
-            const expired = Date.now() - created > DOWNLOAD_TTL;
+  const expired = Date.now() - createdDate.getTime() > DOWNLOAD_TTL;
 
-            return (
+  return (
 
-              <tr key={job.id} className="border-t hover:bg-gray-50">
+    <tr key={job.id} className="border-t hover:bg-gray-50">
 
-                <td className="p-4 font-medium">
-                  {job.conversion_type}
-                </td>
+      <td className="p-4 font-medium">
+        {job.conversion_type}
+      </td>
 
-                <td className="p-4">
-                  <StatusBadge status={job.status} />
-                </td>
+      <td className="p-4">
+        <StatusBadge status={job.status} />
+      </td>
 
-                <td
-                  className="p-4 text-sm text-gray-600"
-                  title={new Date(job.created_at)
-                    .toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-                >
-                  {formatTime(job.created_at)}
-                </td>
+      <td
+        className="p-4 text-sm text-gray-600"
+        title={createdDate.toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata"
+        })}
+      >
+        {formatTime(job.created_at)}
+      </td>
 
-                <td className="p-4">
+      <td className="p-4">
 
-                  {job.status === "completed" && !expired
-                    ? (
-                      <button
-                        onClick={() => onDownload(job.id)}
-                        className="text-blue-600 hover:underline"
-                      >
-                        Download
-                      </button>
-                    )
-                    : expired
-                      ? <span className="text-gray-400 text-sm">Expired</span>
-                      : "-"
-                  }
+        {job.status === "completed" && !expired
+          ? (
+            <button
+              onClick={() => onDownload(job.id)}
+              className="text-blue-600 hover:underline"
+            >
+              Download
+            </button>
+          )
+          : expired
+            ? <span className="text-gray-400 text-sm">Expired</span>
+            : "-"
+        }
 
-                </td>
+      </td>
 
-              </tr>
+    </tr>
 
-            );
+  );
 
-          })}
+})}
 
         </tbody>
 
